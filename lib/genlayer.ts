@@ -4,7 +4,7 @@
 
 export const TX_POLL_INTERVAL_MS = 3000
 export const TX_TIMEOUT_MS = 10 * 60 * 1000
-const RPC = 'https://rpc.bradbury.genlayer.com'
+const RPC = 'https://rpc-bradbury.genlayer.com'
 
 async function readContract(method: string, args: unknown[] = []) {
   const res = await fetch('/api/contract', {
