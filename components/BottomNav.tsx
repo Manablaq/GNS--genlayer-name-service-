@@ -7,7 +7,11 @@ export function BottomNav() {
   const path = usePathname()
 
   return (
-    <div style={{ position: 'fixed', bottom: 20, left: 0, right: 0, display: 'flex', justifyContent: 'center', zIndex: 100, padding: '0 16px', gap: 10 }}>
+    <div style={{
+      position: 'fixed', bottom: 20, left: 0, right: 0,
+      display: 'flex', justifyContent: 'center', zIndex: 100,
+      padding: '0 16px', gap: 10, flexWrap: 'wrap'
+    }}>
       <nav className="bottom-nav">
         <Link href="/" className={`nav-item ${path === '/' ? 'active' : ''}`}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -28,8 +32,18 @@ export function BottomNav() {
           Send GEN
         </Link>
       </nav>
-      <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(18,18,18,0.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999, padding: '6px 12px' }}>
-        <ConnectButton accountStatus="avatar" showBalance={false} chainStatus="none" />
+      {/* Full ConnectButton with disconnect support */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        background: 'rgba(18,18,18,0.9)', backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999,
+        padding: '4px 8px'
+      }}>
+        <ConnectButton
+          accountStatus="full"
+          showBalance={false}
+          chainStatus="none"
+        />
       </div>
     </div>
   )

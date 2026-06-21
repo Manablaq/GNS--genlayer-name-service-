@@ -1,15 +1,32 @@
+// lib/genlayer.ts — direct client-side reads using official genlayer-js pattern
+import { CONTRACT_ADDRESS } from './config'
+
 export const TX_POLL_INTERVAL_MS = 3000
 export const TX_TIMEOUT_MS = 10 * 60 * 1000
 
+// Lazy singleton client — created once, reused
+let _clientPromise: Promise<any> | null = null
+
+async function getClient(): Promise<any> {
+  if (!_clientPromise) {
+    _clientPromise = (async () => {
+      const { createClient } = await import('genlayer-js')
+      const { testnetBradbury } = await import('genlayer-js/chains')
+      return createClient({ chain: testnetBradbury })
+    })()
+  }
+  return _clientPromise
+}
+
 async function readContract(method: string, args: unknown[] = []) {
-  const res = await fetch('/api/contract', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ method, args }),
+  const client = await getClient()
+  const result = await client.readContract({
+    address: CONTRACT_ADDRESS,
+    functionName: method,
+    args,
+    stateStatus: 'accepted',
   })
-  const json = await res.json()
-  if (json.error) throw new Error(json.error)
-  return json.result
+  return result
 }
 
 export async function checkAvailability(name: string) { return readContract('is_available', [name]) }
@@ -20,16 +37,20 @@ export async function getBalance(name: string) { return readContract('get_balanc
 export async function getNamesByOwner(address: string) { return readContract('get_names_by_owner', [address]) }
 export async function getStats() { return readContract('get_stats', []) }
 
-export async function waitForTx(txHash: string, onStatus?: (s: string) => void): Promise<{ success: boolean; status: string }> {
-  const RPC = 'https://rpc.bradbury.genlayer.com'
+export async function waitForTx(
+  txHash: string,
+  onStatus?: (s: string) => void
+): Promise<{ success: boolean; status: string }> {
+  const client = await getClient()
   const start = Date.now()
   while (Date.now() - start < TX_TIMEOUT_MS) {
     try {
-      const id = Math.floor(Math.random() * 100000) + 1
-      const res = await fetch(RPC, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_getTransactionReceipt', id, params: [txHash] }) })
-      const json = await res.json()
-      const r = json.result
-      if (r) { const success = r.status === '0x1'; onStatus?.(success ? 'FINALIZED' : 'FAILED'); return { success, status: success ? 'FINALIZED' : 'FAILED' } }
+      const receipt = await client.getTransactionReceipt({ hash: txHash })
+      if (receipt) {
+        const success = receipt.statusName === 'FINALIZED' || receipt.resultName === 'AGREE'
+        onStatus?.(success ? 'FINALIZED' : receipt.statusName || 'FAILED')
+        return { success, status: receipt.statusName || 'DONE' }
+      }
       onStatus?.('PENDING')
     } catch {}
     await new Promise(r => setTimeout(r, TX_POLL_INTERVAL_MS))
@@ -37,6 +58,23 @@ export async function waitForTx(txHash: string, onStatus?: (s: string) => void):
   return { success: false, status: 'TIMEOUT' }
 }
 
-export function shortAddress(addr: string) { if (!addr || addr.length < 10) return addr; return `${addr.slice(0,6)}...${addr.slice(-4)}` }
-export function formatGEN(wei: string | number) { try { const n = BigInt(wei); const eth = Number(n)/1e18; if (eth===0) return '0 GEN'; if (eth<0.0001) return '< 0.0001 GEN'; return `${eth.toFixed(4)} GEN` } catch { return '0 GEN' } }
-export function normalizeName(name: string) { let n = name.toLowerCase().trim(); if (n.endsWith('.gen')) n = n.slice(0,-4); return n }
+export function shortAddress(addr: string) {
+  if (!addr || addr.length < 10) return addr
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`
+}
+
+export function formatGEN(wei: string | number) {
+  try {
+    const n = BigInt(wei)
+    const eth = Number(n) / 1e18
+    if (eth === 0) return '0 GEN'
+    if (eth < 0.0001) return '< 0.0001 GEN'
+    return `${eth.toFixed(4)} GEN`
+  } catch { return '0 GEN' }
+}
+
+export function normalizeName(name: string) {
+  let n = name.toLowerCase().trim()
+  if (n.endsWith('.gen')) n = n.slice(0, -4)
+  return n
+}

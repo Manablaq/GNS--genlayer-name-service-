@@ -1,16 +1,14 @@
 'use client'
 import { useState } from 'react'
 import { useAccount, useWalletClient } from 'wagmi'
-import { useRouter } from 'next/navigation'
 import { BottomNav } from '@/components/BottomNav'
-import { checkAvailability, getRecord, normalizeName, formatGEN, waitForTx } from '@/lib/genlayer'
+import { getRecord, normalizeName, formatGEN, waitForTx } from '@/lib/genlayer'
 import { CONTRACT_ADDRESS } from '@/lib/config'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 
 export default function SendPage() {
   const { isConnected } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const router = useRouter()
   const [nameInput, setNameInput] = useState('')
   const [amount, setAmount] = useState('')
   const [resolvedRecord, setResolvedRecord] = useState<any>(null)
@@ -19,12 +17,12 @@ export default function SendPage() {
 
   async function handleLookup() {
     const name = normalizeName(nameInput)
-    if (!name) return
+    if (!name || name.length < 3) return
     setLookupState('searching')
     setResolvedRecord(null)
     try {
       const record = await getRecord(name)
-      if (record?.found) {
+      if (record?.found === true || record?.found === 'true') {
         setResolvedRecord(record)
         setLookupState('found')
       } else {
@@ -77,32 +75,30 @@ export default function SendPage() {
           <p style={{ fontSize: 48, marginBottom: 16 }}>✅</p>
           <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Sent!</p>
           <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24 }}>{amount} GEN sent to {normalizeName(nameInput)}.gen</p>
-          <button className="btn-holo" style={{ padding: '12px 24px' }} onClick={() => { setSendStatus('idle'); setResolvedRecord(null); setNameInput(''); setAmount('') }}>Send again</button>
+          <button className="btn-holo" style={{ padding: '12px 24px' }}
+            onClick={() => { setSendStatus('idle'); setResolvedRecord(null); setNameInput(''); setAmount('') }}>
+            Send again
+          </button>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Name lookup */}
           <div className="card fade-up" style={{ padding: '20px' }}>
             <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 10, fontWeight: 500 }}>Recipient .gen name</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
                 className="gns-input"
                 style={{ padding: '11px 14px', fontSize: 14 }}
-                placeholder="manablaq.gen"
+                placeholder="example.gen"
                 value={nameInput}
                 onChange={e => { setNameInput(e.target.value); setLookupState('idle'); setResolvedRecord(null) }}
                 onKeyDown={e => e.key === 'Enter' && handleLookup()}
               />
-              <button
-                className="btn-outline"
-                style={{ padding: '11px 16px', fontSize: 13, flexShrink: 0 }}
+              <button className="btn-outline" style={{ padding: '11px 16px', fontSize: 13, flexShrink: 0 }}
                 onClick={handleLookup}
-                disabled={!nameInput || lookupState === 'searching'}
-              >
+                disabled={!nameInput || nameInput.length < 3 || lookupState === 'searching'}>
                 {lookupState === 'searching' ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Look up'}
               </button>
             </div>
-
             {lookupState === 'found' && resolvedRecord && (
               <div className="fade-up" style={{ marginTop: 14, padding: '12px 14px', background: 'rgba(0,232,121,0.06)', border: '1px solid rgba(0,232,121,0.2)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div className="pulse-dot" style={{ background: 'var(--success)' }} />
@@ -117,38 +113,25 @@ export default function SendPage() {
             )}
           </div>
 
-          {/* Amount */}
           {lookupState === 'found' && (
             <div className="card fade-up" style={{ padding: '20px' }}>
               <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 10, fontWeight: 500 }}>Amount (GEN)</label>
-              <input
-                className="gns-input"
-                style={{ padding: '11px 14px', fontSize: 16 }}
-                placeholder="0.01"
-                type="number"
-                min="0"
-                step="0.0001"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-              />
+              <input className="gns-input" style={{ padding: '11px 14px', fontSize: 16 }}
+                placeholder="0.01" type="number" min="0" step="0.0001"
+                value={amount} onChange={e => setAmount(e.target.value)} />
             </div>
           )}
 
           {lookupState === 'found' && amount && (
-            <button
-              className="btn-holo fade-up"
+            <button className="btn-holo fade-up"
               style={{ padding: '14px', fontSize: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-              onClick={handleSend}
-              disabled={sendStatus === 'pending'}
-            >
+              onClick={handleSend} disabled={sendStatus === 'pending'}>
               {sendStatus === 'pending' ? <><div className="spinner" />Processing...</> : `Send ${amount} GEN →`}
             </button>
           )}
-
           {sendStatus === 'error' && <p style={{ fontSize: 13, color: 'var(--error)', textAlign: 'center' }}>Transaction failed. Check your balance.</p>}
         </div>
       )}
-
       <BottomNav />
     </main>
   )
