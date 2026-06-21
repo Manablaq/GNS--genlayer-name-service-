@@ -1,31 +1,25 @@
-// lib/genlayer.ts — direct client-side reads using official genlayer-js pattern
-import { CONTRACT_ADDRESS } from './config'
+// lib/genlayer.ts
+// Reads go through /api/contract (which uses genlayer-js server-side)
+// Result is a JSON string that needs parsing
 
 export const TX_POLL_INTERVAL_MS = 3000
 export const TX_TIMEOUT_MS = 10 * 60 * 1000
-
-// Lazy singleton client — created once, reused
-let _clientPromise: Promise<any> | null = null
-
-async function getClient(): Promise<any> {
-  if (!_clientPromise) {
-    _clientPromise = (async () => {
-      const { createClient } = await import('genlayer-js')
-      const { testnetBradbury } = await import('genlayer-js/chains')
-      return createClient({ chain: testnetBradbury })
-    })()
-  }
-  return _clientPromise
-}
+const RPC = 'https://rpc.bradbury.genlayer.com'
 
 async function readContract(method: string, args: unknown[] = []) {
-  const client = await getClient()
-  const result = await client.readContract({
-    address: CONTRACT_ADDRESS,
-    functionName: method,
-    args,
-    stateStatus: 'accepted',
+  const res = await fetch('/api/contract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method, args }),
   })
+  const json = await res.json()
+  if (json.error) throw new Error(json.error)
+
+  // genlayer-js returns contract results as JSON strings — parse them
+  let result = json.result
+  if (typeof result === 'string') {
+    try { result = JSON.parse(result) } catch {}
+  }
   return result
 }
 
@@ -41,15 +35,23 @@ export async function waitForTx(
   txHash: string,
   onStatus?: (s: string) => void
 ): Promise<{ success: boolean; status: string }> {
-  const client = await getClient()
   const start = Date.now()
   while (Date.now() - start < TX_TIMEOUT_MS) {
     try {
-      const receipt = await client.getTransactionReceipt({ hash: txHash })
-      if (receipt) {
-        const success = receipt.statusName === 'FINALIZED' || receipt.resultName === 'AGREE'
-        onStatus?.(success ? 'FINALIZED' : receipt.statusName || 'FAILED')
-        return { success, status: receipt.statusName || 'DONE' }
+      const id = Math.floor(Math.random() * 100000) + 1
+      const res = await fetch(RPC, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'eth_getTransactionReceipt', id, params: [txHash]
+        }),
+      })
+      const json = await res.json()
+      const r = json.result
+      if (r) {
+        const success = r.status === '0x1'
+        onStatus?.(success ? 'FINALIZED' : 'FAILED')
+        return { success, status: success ? 'FINALIZED' : 'FAILED' }
       }
       onStatus?.('PENDING')
     } catch {}
