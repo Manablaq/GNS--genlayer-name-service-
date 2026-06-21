@@ -1,8 +1,7 @@
 'use client'
 import { useState } from 'react'
-import { useAccount, useWalletClient } from 'wagmi'
+import { useAccount } from 'wagmi'
 import { CONTRACT_ADDRESS } from '@/lib/config'
-import { waitForTx } from '@/lib/genlayer'
 
 interface Props {
   name: string
@@ -12,114 +11,127 @@ interface Props {
 
 export function RegisterModal({ name, onClose, onSuccess }: Props) {
   const { address } = useAccount()
-  const { data: walletClient } = useWalletClient()
-  const [form, setForm] = useState({ avatar: '', bio: '', twitter: '', github: '', website: '' })
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'pending' | 'done' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'confirming' | 'pending' | 'done' | 'error'>('idle')
   const [errMsg, setErrMsg] = useState('')
 
   const displayName = name.endsWith('.gen') ? name : `${name}.gen`
 
   async function handleRegister() {
-    if (!walletClient || !address) return
-    setStatus('submitting')
+    if (!address) return
+    setStatus('confirming')
     setErrMsg('')
+
     try {
-      const txHash = await (walletClient as any).writeContract({
+      // Use genlayer-js for proper GenLayer transaction encoding
+      const { createClient } = await import('genlayer-js')
+      const { testnetBradbury } = await import('genlayer-js/chains')
+
+      const client = createClient({
+        chain: testnetBradbury,
+        account: address,
+      })
+
+      // Connect to browser wallet (MetaMask)
+      await (client as any).connect('testnetBradbury')
+
+      const txHash = await (client as any).writeContract({
+        account: address,
         address: CONTRACT_ADDRESS,
-        abi: [{
-          name: 'register',
-          type: 'function',
-          stateMutability: 'nonpayable',
-          inputs: [
-            { name: 'name', type: 'string' },
-            { name: 'avatar', type: 'string' },
-            { name: 'bio', type: 'string' },
-            { name: 'twitter', type: 'string' },
-            { name: 'github', type: 'string' },
-            { name: 'website', type: 'string' },
-          ],
-          outputs: [],
-        }],
         functionName: 'register',
-        args: [name, form.avatar, form.bio, form.twitter, form.github, form.website],
+        args: [name, '', '', '', '', ''],
+        value: BigInt(0),
       })
+
       setStatus('pending')
-      const result = await waitForTx(txHash, s => {
-        if (s === 'FINALIZED') setStatus('done')
-      })
-      if (result.success) {
-        setStatus('done')
-        setTimeout(onSuccess, 1200)
-      } else {
-        setStatus('error')
-        setErrMsg('Transaction failed. Check GenExplorer for details.')
+
+      // Poll for receipt
+      const start = Date.now()
+      while (Date.now() - start < 10 * 60 * 1000) {
+        await new Promise(r => setTimeout(r, 3000))
+        try {
+          const receipt = await (client as any).getTransactionReceipt({ hash: txHash })
+          if (receipt) {
+            setStatus('done')
+            setTimeout(onSuccess, 1200)
+            return
+          }
+        } catch {}
       }
+      setStatus('error')
+      setErrMsg('Timed out. Check GenExplorer for the transaction.')
     } catch (e: any) {
       setStatus('error')
-      setErrMsg(e?.message || 'Transaction rejected.')
+      setErrMsg(e?.message?.slice(0, 200) || 'Transaction rejected.')
     }
   }
 
   return (
     <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal-content holo-border holo-border-subtle">
+
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
           <div>
-            <p style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6, fontFamily: 'JetBrains Mono, monospace' }}>Registering</p>
-            <h2 className="name-display" style={{ fontSize: 28 }}>{displayName}</h2>
+            <p style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
+              Registering
+            </p>
+            <h2 className="name-display" style={{ fontSize: 32 }}>{displayName}</h2>
           </div>
           <button onClick={onClose} className="btn-outline" style={{ padding: '6px 12px', fontSize: 13 }}>✕</button>
         </div>
 
         {status === 'done' ? (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+          <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
-            <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Name registered!</p>
-            <p style={{ color: 'var(--muted)', fontSize: 14 }}>{displayName} is yours.</p>
+            <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
+              {displayName} is yours!
+            </p>
+            <p style={{ color: 'var(--muted)', fontSize: 14 }}>Name registered on GenLayer.</p>
           </div>
         ) : (
           <>
-            {/* Form */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {[
-                { key: 'avatar', label: 'Avatar URL', placeholder: 'https://...' },
-                { key: 'bio', label: 'Bio', placeholder: 'Builder on GenLayer...' },
-                { key: 'twitter', label: 'Twitter/X', placeholder: '@handle' },
-                { key: 'github', label: 'GitHub', placeholder: 'username' },
-                { key: 'website', label: 'Website', placeholder: 'https://...' },
-              ].map(({ key, label, placeholder }) => (
-                <div key={key}>
-                  <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 6, fontWeight: 500 }}>{label}</label>
-                  <input
-                    className="gns-input"
-                    style={{ padding: '10px 14px', fontSize: 13 }}
-                    placeholder={placeholder}
-                    value={form[key as keyof typeof form]}
-                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                    disabled={status !== 'idle'}
-                  />
-                </div>
-              ))}
+            {/* Simple info card — no form fields needed */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '16px 18px', marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>Name</span>
+                <span className="font-mono" style={{ fontSize: 13 }}>{displayName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>Owner</span>
+                <span className="font-mono" style={{ fontSize: 13 }}>
+                  {address ? `${address.slice(0,6)}...${address.slice(-4)}` : '—'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: 'var(--muted)' }}>Network</span>
+                <span style={{ fontSize: 13, color: 'var(--success)' }}>GenLayer Bradbury</span>
+              </div>
             </div>
 
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.6 }}>
+              This registers <strong style={{ color: 'var(--text)' }}>{displayName}</strong> on-chain. 
+              AI validators will verify the name is appropriate. You can update your profile after.
+            </p>
+
             {errMsg && (
-              <div style={{ marginTop: 14, padding: '10px 14px', background: 'rgba(255,59,59,0.1)', border: '1px solid rgba(255,59,59,0.3)', borderRadius: 10, fontSize: 13, color: 'var(--error)' }}>
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(255,59,59,0.1)', border: '1px solid rgba(255,59,59,0.3)', borderRadius: 10, fontSize: 13, color: 'var(--error)' }}>
                 {errMsg}
               </div>
             )}
 
-            <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
-              <button className="btn-outline" onClick={onClose} style={{ flex: 1, padding: '12px' }}>Cancel</button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-outline" onClick={onClose} style={{ flex: 1, padding: '13px' }}>
+                Cancel
+              </button>
               <button
                 className="btn-holo"
                 onClick={handleRegister}
                 disabled={status !== 'idle' && status !== 'error'}
-                style={{ flex: 2, padding: '12px', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                style={{ flex: 2, padding: '13px', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               >
-                {status === 'submitting' && <><div className="spinner" />Confirming...</>}
+                {status === 'confirming' && <><div className="spinner" />Confirm in wallet...</>}
                 {status === 'pending' && <><div className="spinner" />Processing...</>}
-                {status === 'idle' && 'Register Name'}
+                {status === 'idle' && `Register ${displayName}`}
                 {status === 'error' && 'Try Again'}
               </button>
             </div>
