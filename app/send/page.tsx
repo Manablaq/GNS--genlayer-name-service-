@@ -1,19 +1,21 @@
 'use client'
 import { useState } from 'react'
-import { useAccount, useWalletClient } from 'wagmi'
+import { useAccount } from 'wagmi'
 import { BottomNav } from '@/components/BottomNav'
-import { getRecord, normalizeName, formatGEN, waitForTx } from '@/lib/genlayer'
+import { getRecord, normalizeName, formatGEN } from '@/lib/genlayer'
 import { CONTRACT_ADDRESS } from '@/lib/config'
+import { TransactionStatus } from 'genlayer-js/types'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 
 export default function SendPage() {
-  const { isConnected } = useAccount()
-  const { data: walletClient } = useWalletClient()
+  const { address, isConnected } = useAccount()
   const [nameInput, setNameInput] = useState('')
   const [amount, setAmount] = useState('')
   const [resolvedRecord, setResolvedRecord] = useState<any>(null)
   const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'found' | 'not-found'>('idle')
   const [sendStatus, setSendStatus] = useState<'idle' | 'pending' | 'done' | 'error'>('idle')
+  const [txHash, setTxHash] = useState('')
+  const [errMsg, setErrMsg] = useState('')
 
   async function handleLookup() {
     const name = normalizeName(nameInput)
@@ -32,31 +34,50 @@ export default function SendPage() {
   }
 
   async function handleSend() {
-    if (!walletClient || !resolvedRecord || !amount) return
+    if (!address || !resolvedRecord || !amount) return
     setSendStatus('pending')
+    setErrMsg('')
+
     try {
+      const { createClient } = await import('genlayer-js')
+      const { testnetBradbury } = await import('genlayer-js/chains')
+
+      const client = createClient({
+        chain: testnetBradbury,
+        account: address as `0x${string}`,
+      })
+
+      try { await (client as any).connect('testnetBradbury') } catch {}
+
       const wei = BigInt(Math.floor(parseFloat(amount) * 1e18))
       const name = normalizeName(nameInput)
-      const txHash = await (walletClient as any).writeContract({
+
+      const hash = await (client as any).writeContract({
         address: CONTRACT_ADDRESS,
-        abi: [{
-          name: 'send_to_name', type: 'function', stateMutability: 'payable',
-          inputs: [{ name: 'name', type: 'string' }], outputs: [],
-        }],
         functionName: 'send_to_name',
         args: [name],
         value: wei,
       })
-      const r = await waitForTx(txHash)
-      if (r.success) setSendStatus('done')
-      else setSendStatus('error')
-    } catch { setSendStatus('error') }
+
+      setTxHash(hash)
+
+      await (client as any).waitForTransactionReceipt({
+        hash,
+        status: TransactionStatus.ACCEPTED,
+        interval: 4000,
+        retries: 60,
+      })
+
+      setSendStatus('done')
+    } catch (e: any) {
+      setSendStatus('error')
+      setErrMsg((e?.message || String(e)).slice(0, 200))
+    }
   }
 
   if (!isConnected) return (
     <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 }}>
       <p className="font-display" style={{ fontSize: 22, fontWeight: 700 }}>Connect your wallet</p>
-      <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 8 }}>to send GEN tokens</p>
       <ConnectButton />
       <BottomNav />
     </main>
@@ -74,25 +95,30 @@ export default function SendPage() {
         <div className="card fade-up" style={{ padding: '40px 24px', textAlign: 'center' }}>
           <p style={{ fontSize: 48, marginBottom: 16 }}>✅</p>
           <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Sent!</p>
-          <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 24 }}>{amount} GEN sent to {normalizeName(nameInput)}.gen</p>
-          <button className="btn-holo" style={{ padding: '12px 24px' }}
-            onClick={() => { setSendStatus('idle'); setResolvedRecord(null); setNameInput(''); setAmount('') }}>
-            Send again
-          </button>
+          <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>{amount} GEN → {normalizeName(nameInput)}.gen</p>
+          {txHash && (
+            <a href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`} target="_blank" rel="noreferrer"
+              style={{ fontSize: 12, color: 'rgba(123,47,255,0.8)', fontFamily: 'JetBrains Mono, monospace' }}>
+              View on GenExplorer →
+            </a>
+          )}
+          <div style={{ marginTop: 20 }}>
+            <button className="btn-holo" style={{ padding: '12px 24px' }}
+              onClick={() => { setSendStatus('idle'); setResolvedRecord(null); setNameInput(''); setAmount(''); setTxHash('') }}>
+              Send again
+            </button>
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card fade-up" style={{ padding: '20px' }}>
             <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 10, fontWeight: 500 }}>Recipient .gen name</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                className="gns-input"
-                style={{ padding: '11px 14px', fontSize: 14 }}
+              <input className="gns-input" style={{ padding: '11px 14px', fontSize: 14 }}
                 placeholder="example.gen"
                 value={nameInput}
                 onChange={e => { setNameInput(e.target.value); setLookupState('idle'); setResolvedRecord(null) }}
-                onKeyDown={e => e.key === 'Enter' && handleLookup()}
-              />
+                onKeyDown={e => e.key === 'Enter' && handleLookup()} />
               <button className="btn-outline" style={{ padding: '11px 16px', fontSize: 13, flexShrink: 0 }}
                 onClick={handleLookup}
                 disabled={!nameInput || nameInput.length < 3 || lookupState === 'searching'}>
@@ -108,9 +134,7 @@ export default function SendPage() {
                 </div>
               </div>
             )}
-            {lookupState === 'not-found' && (
-              <p style={{ marginTop: 12, fontSize: 13, color: 'var(--error)' }}>Name not registered.</p>
-            )}
+            {lookupState === 'not-found' && <p style={{ marginTop: 12, fontSize: 13, color: 'var(--error)' }}>Name not registered.</p>}
           </div>
 
           {lookupState === 'found' && (
@@ -122,6 +146,8 @@ export default function SendPage() {
             </div>
           )}
 
+          {errMsg && <p style={{ fontSize: 13, color: 'var(--error)', wordBreak: 'break-word' }}>{errMsg}</p>}
+
           {lookupState === 'found' && amount && (
             <button className="btn-holo fade-up"
               style={{ padding: '14px', fontSize: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
@@ -129,7 +155,6 @@ export default function SendPage() {
               {sendStatus === 'pending' ? <><div className="spinner" />Processing...</> : `Send ${amount} GEN →`}
             </button>
           )}
-          {sendStatus === 'error' && <p style={{ fontSize: 13, color: 'var(--error)', textAlign: 'center' }}>Transaction failed. Check your balance.</p>}
         </div>
       )}
       <BottomNav />
