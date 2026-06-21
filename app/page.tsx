@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi'
 import { BottomNav } from '@/components/BottomNav'
 import { RegisterModal } from '@/components/RegisterModal'
 import { checkAvailability, normalizeName, getStats } from '@/lib/genlayer'
+import { usePolling } from '@/hooks/usePolling'
 
 type CheckState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
 
@@ -14,15 +15,10 @@ export default function HomePage() {
   const [input, setInput] = useState('')
   const [checkState, setCheckState] = useState<CheckState>('idle')
   const [showRegister, setShowRegister] = useState(false)
-  const [stats, setStats] = useState<{ total_names: string; total_transferred: string } | null>(null)
+  const { data: stats } = usePolling(getStats, 5000)
   const debounceRef = useRef<NodeJS.Timeout>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animRef = useRef<number>()
-
-  // Load stats
-  useEffect(() => {
-    getStats().then(s => s && setStats(s)).catch(() => {})
-  }, [])
 
   // Canvas background animation
   useEffect(() => {

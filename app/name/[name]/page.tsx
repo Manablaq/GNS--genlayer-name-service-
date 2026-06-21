@@ -1,9 +1,10 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAccount, useWalletClient } from 'wagmi'
 import { BottomNav } from '@/components/BottomNav'
 import { getRecord, shortAddress, formatGEN, waitForTx } from '@/lib/genlayer'
+import { usePolling } from '@/hooks/usePolling'
 import { CONTRACT_ADDRESS } from '@/lib/config'
 
 export default function NamePage() {
@@ -11,8 +12,7 @@ export default function NamePage() {
   const router = useRouter()
   const { address, isConnected } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const [record, setRecord] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const { data: record, loading } = usePolling(() => getRecord(name), 5000)
   const [showSend, setShowSend] = useState(false)
   const [sendAmount, setSendAmount] = useState('')
   const [sendStatus, setSendStatus] = useState<'idle' | 'pending' | 'done' | 'error'>('idle')
@@ -21,13 +21,7 @@ export default function NamePage() {
   const displayName = `${name}.gen`
   const isOwner = address?.toLowerCase() === record?.owner?.toLowerCase()
 
-  useEffect(() => {
-    setLoading(true)
-    getRecord(name).then(r => {
-      setRecord(r)
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [name])
+
 
   async function handleSend() {
     if (!walletClient || !sendAmount) return

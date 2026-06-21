@@ -1,25 +1,22 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAccount } from 'wagmi'
 import { useRouter } from 'next/navigation'
 import { BottomNav } from '@/components/BottomNav'
 import { getNamesByOwner, shortAddress, formatGEN, normalizeName } from '@/lib/genlayer'
+import { usePolling } from '@/hooks/usePolling'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 
 export default function MyNamesPage() {
   const { address, isConnected } = useAccount()
   const router = useRouter()
-  const [names, setNames] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
+  const { data: _names, loading } = usePolling(
+    () => address ? getNamesByOwner(address) : Promise.resolve([]),
+    5000
+  )
+  const names = Array.isArray(_names) ? _names : []
 
-  useEffect(() => {
-    if (!address) return
-    setLoading(true)
-    getNamesByOwner(address).then(n => {
-      setNames(Array.isArray(n) ? n : [])
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [address])
+
 
   if (!isConnected) return (
     <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 }}>
