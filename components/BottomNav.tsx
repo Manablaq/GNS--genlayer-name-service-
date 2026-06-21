@@ -1,17 +1,68 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { useAccount, useDisconnect } from 'wagmi'
+import { useConnectModal } from '@rainbow-me/rainbowkit'
 
 export function BottomNav() {
   const path = usePathname()
+  const { address, isConnected } = useAccount()
+  const { disconnect } = useDisconnect()
+  const { openConnectModal } = useConnectModal()
+
+  const short = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : ''
 
   return (
-    <div style={{
-      position: 'fixed', bottom: 20, left: 0, right: 0,
-      display: 'flex', justifyContent: 'center', zIndex: 100,
-      padding: '0 16px', gap: 10, flexWrap: 'wrap'
-    }}>
+    <>
+      {/* Wallet button — top right, always visible */}
+      <div style={{
+        position: 'fixed', top: 16, right: 16, zIndex: 200,
+      }}>
+        {isConnected ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              background: 'rgba(18,18,18,0.95)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 10,
+              padding: '7px 14px',
+              fontSize: 13,
+              fontFamily: 'JetBrains Mono, monospace',
+              color: 'rgba(235,235,235,0.8)',
+            }}>
+              {short}
+            </div>
+            <button
+              onClick={() => disconnect()}
+              style={{
+                background: 'rgba(255,59,59,0.15)',
+                border: '1px solid rgba(255,59,59,0.3)',
+                borderRadius: 10,
+                padding: '7px 14px',
+                fontSize: 13,
+                color: '#FF3B3B',
+                cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif',
+                fontWeight: 500,
+                transition: 'background 0.2s',
+              }}
+              onMouseOver={e => (e.currentTarget.style.background = 'rgba(255,59,59,0.25)')}
+              onMouseOut={e => (e.currentTarget.style.background = 'rgba(255,59,59,0.15)')}
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={openConnectModal}
+            className="btn-holo"
+            style={{ padding: '9px 20px', fontSize: 14 }}
+          >
+            Connect Wallet
+          </button>
+        )}
+      </div>
+
+      {/* Bottom nav */}
       <nav className="bottom-nav">
         <Link href="/" className={`nav-item ${path === '/' ? 'active' : ''}`}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -32,19 +83,6 @@ export function BottomNav() {
           Send GEN
         </Link>
       </nav>
-      {/* Full ConnectButton with disconnect support */}
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        background: 'rgba(18,18,18,0.9)', backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.1)', borderRadius: 999,
-        padding: '4px 8px'
-      }}>
-        <ConnectButton
-          accountStatus="full"
-          showBalance={false}
-          chainStatus="none"
-        />
-      </div>
-    </div>
+    </>
   )
 }
