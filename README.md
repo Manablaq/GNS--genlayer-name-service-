@@ -1,34 +1,106 @@
-# GNS — GenLayer Name Service
+# GNS - GenLayer Name Service
 
-Register `.gen` names on GenLayer. Send and receive GEN tokens using human-readable names instead of wallet addresses.
+GNS is a GenLayer Bradbury testnet app for registering `.gen` names, resolving them to wallet addresses, and sending GEN to a name's contract balance.
 
-## Live App
-https://dotgenapp.vercel.app
+## Links
+
+- Live app: https://dotgenapp.vercel.app
+- GitHub repo: https://github.com/Manablaq/GNS--genlayer-name-service-
+- Contract: `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2`
+- Explorer: https://explorer-bradbury.genlayer.com/address/0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2
+
+## Network
+
+- Network: GenLayer Bradbury
+- Chain ID: `4221`
+- RPC URL: `https://rpc-bradbury.genlayer.com`
+- Explorer URL: `https://explorer-bradbury.genlayer.com`
+- Native token: GEN
 
 ## Contract
-- **Address:** `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2` (Bradbury Testnet)
-- **File:** `contracts/gns.py`
 
-## How It Works
-GNS is an Intelligent Contract on GenLayer Bradbury Testnet that lets users register `.gen` names mapped to their wallet addresses.
+The contract source is [contracts/gns.py](contracts/gns.py). It is a Python GenLayer Intelligent Contract using `from genlayer import *`, `gl.Contract`, `TreeMap` storage, and `@gl.public.write` / `@gl.public.view` methods.
 
-- **Register** a `.gen` name — AI validators verify the name is appropriate (not offensive, not brand impersonation)
-- **Send GEN** to `albert.gen` instead of `0x1f87...5024` — resolves directly to the owner's wallet
-- **Once claimed, locked forever** — no one can take a registered name
-- **Reverse lookup** — resolve a wallet address back to its `.gen` name
+Write methods:
+- `register(name, avatar, bio, twitter, github, website)`
+- `update_profile(name, avatar, bio, twitter, github, website)`
+- `set_address(name, new_address)`
+- `set_primary(name)`
+- `transfer(name, new_owner)`
+- `send_to_name(name)` payable
+- `withdraw(name)`
 
-## Features
-- `register(name, ...)` — AI-validated name registration using `gl.eq_principle.prompt_non_comparative`
-- `resolve(name)` — name → wallet address
-- `reverse_resolve(address)` — address → primary name
-- `send_to_name(name)` — payable, credits GEN to name balance
-- `withdraw(name)` — owner claims GEN balance
-- `transfer(name, new_owner)` — transfer name ownership
-- `get_names_by_owner(address)` — list all names for a wallet
-- Real-time 5-second polling on all pages
+Read methods:
+- `resolve(name)`
+- `reverse_resolve(address)`
+- `get_record(name)`
+- `is_available(name)`
+- `get_balance(name)`
+- `get_names_by_owner(owner)`
+- `get_stats()`
 
-## Stack
-- GenLayer Bradbury Testnet (Python Intelligent Contract)
-- Next.js 16 + TypeScript
-- genlayer-js + wagmi + RainbowKit
-- Vercel
+There are no separate owner/admin methods.
+
+## Frontend and API Behavior
+
+- Frontend config points to `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2` on Bradbury chain ID `4221`.
+- Reads go through `POST /api/contract`, which calls `genlayer-js` `readContract` against the deployed contract.
+- The API allowlists read methods only and validates name/address arguments. It does not execute arbitrary method names from request bodies.
+- Wallet writes happen client-side through the connected browser wallet using `genlayer-js`.
+- The server API does not use a private key or server-side wallet for reads.
+
+## Transaction Lifecycle
+
+The app waits for `TransactionStatus.ACCEPTED` after writes. Accepted transactions are readable from the contract, but Bradbury finalization can still be pending. The UI and docs should not claim a transaction is finalized unless the finalized state is explicitly checked.
+
+The Bradbury explorer may show accepted or undetermined while the finalization window is still open.
+
+## AI Validation
+
+Registration uses `gl.eq_principle.prompt_non_comparative` to ask validators for a JSON approval decision about the requested name. The app describes this as AI validator policy checking for registration, not ENS compatibility or external identity proof.
+
+## Local Setup
+
+```bash
+npm install
+npm run lint
+npm run build
+```
+
+Run locally:
+
+```bash
+npm run dev
+```
+
+## Testing
+
+Required verification commands:
+
+```bash
+npm run lint
+npm run build
+npm audit
+git diff --check
+```
+
+Manual checks:
+- Connect a wallet on GenLayer Bradbury.
+- Search a name and confirm availability comes from the API route.
+- Register a name and confirm the UI reports accepted, not finalized.
+- Resolve a registered name and confirm profile data comes from contract reads.
+- Send GEN to a name and confirm it is credited to the name balance before withdrawal.
+
+## Deployment Proof
+
+- Live deployment: https://dotgenapp.vercel.app
+- Deployed contract explorer page: https://explorer-bradbury.genlayer.com/address/0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2
+- Repository: https://github.com/Manablaq/GNS--genlayer-name-service-
+
+## Limitations
+
+- `.gen` names are app-specific records in this contract. They are not ENS names.
+- Ownership proof is limited to the owner/address fields stored by the contract.
+- `get_names_by_owner` scans up to 200 stored names.
+- GEN sent through `send_to_name` is credited to the name balance and must be withdrawn by the name owner.
+- Accepted transactions may still be pending finalization on Bradbury.

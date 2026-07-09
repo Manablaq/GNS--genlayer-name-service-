@@ -1,9 +1,10 @@
 'use client'
 import { useState } from 'react'
+import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
-import { useAccount, useWalletClient } from 'wagmi'
+import { useAccount } from 'wagmi'
 import { BottomNav } from '@/components/BottomNav'
-import { getRecord, shortAddress, formatGEN, waitForTx } from '@/lib/genlayer'
+import { getExplorerTxUrl, getRecord, shortAddress, formatGEN, waitForAccepted } from '@/lib/genlayer'
 import { usePolling } from '@/hooks/usePolling'
 import { CONTRACT_ADDRESS } from '@/lib/config'
 
@@ -11,12 +12,12 @@ export default function NamePage() {
   const { name } = useParams<{ name: string }>()
   const router = useRouter()
   const { address, isConnected } = useAccount()
-  const { data: walletClient } = useWalletClient()
-  const { data: record, loading } = usePolling(() => getRecord(name), 5000)
-  const [showSend, setShowSend] = useState(false)
+  const { data: record, loading, refetch } = usePolling(() => getRecord(name), 5000)
   const [sendAmount, setSendAmount] = useState('')
-  const [sendStatus, setSendStatus] = useState<'idle' | 'pending' | 'done' | 'error'>('idle')
-  const [withdrawStatus, setWithdrawStatus] = useState<'idle' | 'pending' | 'done' | 'error'>('idle')
+  const [sendStatus, setSendStatus] = useState<'idle' | 'submitted' | 'accepted' | 'error'>('idle')
+  const [withdrawStatus, setWithdrawStatus] = useState<'idle' | 'submitted' | 'accepted' | 'error'>('idle')
+  const [sendTxHash, setSendTxHash] = useState('')
+  const [withdrawTxHash, setWithdrawTxHash] = useState('')
 
   const displayName = `${name}.gen`
   const isOwner = address?.toLowerCase() === record?.owner?.toLowerCase()
@@ -24,45 +25,58 @@ export default function NamePage() {
 
 
   async function handleSend() {
-    if (!walletClient || !sendAmount) return
-    setSendStatus('pending')
+    if (!address || !sendAmount) return
+    setSendStatus('submitted')
     try {
-      const wei = BigInt(Math.floor(parseFloat(sendAmount) * 1e18)).toString()
-      const txHash = await (walletClient as any).writeContract({
+      const { createClient } = await import('genlayer-js')
+      const { testnetBradbury } = await import('genlayer-js/chains')
+      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
+      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
+      const client = createClient({
+        chain: testnetBradbury,
+        account: address as `0x${string}`,
+        provider,
+      })
+      const wei = BigInt(Math.floor(Number(sendAmount) * 1e18))
+      const txHash = await client.writeContract({
         address: CONTRACT_ADDRESS,
-        abi: [{
-          name: 'send_to_name', type: 'function', stateMutability: 'payable',
-          inputs: [{ name: 'name', type: 'string' }], outputs: [],
-        }],
         functionName: 'send_to_name',
         args: [name],
-        value: BigInt(wei),
+        value: wei,
       })
-      const r = await waitForTx(txHash)
+      setSendTxHash(txHash)
+      const r = await waitForAccepted(txHash)
       if (r.success) {
-        setSendStatus('done')
-        getRecord(name).then(setRecord)
+        setSendStatus('accepted')
+        refetch()
       } else setSendStatus('error')
     } catch { setSendStatus('error') }
   }
 
   async function handleWithdraw() {
-    if (!walletClient) return
-    setWithdrawStatus('pending')
+    if (!address) return
+    setWithdrawStatus('submitted')
     try {
-      const txHash = await (walletClient as any).writeContract({
+      const { createClient } = await import('genlayer-js')
+      const { testnetBradbury } = await import('genlayer-js/chains')
+      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
+      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
+      const client = createClient({
+        chain: testnetBradbury,
+        account: address as `0x${string}`,
+        provider,
+      })
+      const txHash = await client.writeContract({
         address: CONTRACT_ADDRESS,
-        abi: [{
-          name: 'withdraw', type: 'function', stateMutability: 'nonpayable',
-          inputs: [{ name: 'name', type: 'string' }], outputs: [],
-        }],
         functionName: 'withdraw',
         args: [name],
+        value: 0n,
       })
-      const r = await waitForTx(txHash)
+      setWithdrawTxHash(txHash)
+      const r = await waitForAccepted(txHash)
       if (r.success) {
-        setWithdrawStatus('done')
-        getRecord(name).then(setRecord)
+        setWithdrawStatus('accepted')
+        refetch()
       } else setWithdrawStatus('error')
     } catch { setWithdrawStatus('error') }
   }
@@ -101,7 +115,7 @@ export default function NamePage() {
           {/* Avatar + name */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
             {record.avatar ? (
-              <img src={record.avatar} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(123,47,255,0.4)' }} />
+              <Image src={record.avatar} alt="" width={56} height={56} unoptimized style={{ borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(123,47,255,0.4)' }} />
             ) : (
               <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #7B2FFF, #FF2FA0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: 'white', fontFamily: 'Syne, sans-serif', flexShrink: 0 }}>
                 {(name[0] || '?').toUpperCase()}
@@ -146,20 +160,21 @@ export default function NamePage() {
               className="btn-holo"
               style={{ padding: '10px 18px', fontSize: 13 }}
               onClick={handleWithdraw}
-              disabled={withdrawStatus === 'pending'}
+              disabled={withdrawStatus === 'submitted'}
             >
-              {withdrawStatus === 'pending' ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Withdraw'}
+              {withdrawStatus === 'submitted' ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Withdraw'}
             </button>
           )}
         </div>
-        {withdrawStatus === 'done' && <p style={{ marginTop: 10, fontSize: 13, color: 'var(--success)' }}>Withdrawn successfully!</p>}
+        {withdrawStatus === 'accepted' && <p style={{ marginTop: 10, fontSize: 13, color: 'var(--success)' }}>Withdrawal accepted. Finalization may still be pending.</p>}
+        {withdrawTxHash && <a href={getExplorerTxUrl(withdrawTxHash)} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: 'inline-block', fontSize: 11, color: 'rgba(123,47,255,0.8)' }}>View withdrawal on explorer</a>}
       </div>
 
       {/* Send GEN */}
       <div className="card fade-up-d2" style={{ padding: '20px 24px', marginBottom: 16 }}>
         <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Send GEN to {displayName}</p>
-        {sendStatus === 'done' ? (
-          <p style={{ color: 'var(--success)', fontSize: 14 }}>✓ Sent successfully!</p>
+        {sendStatus === 'accepted' ? (
+          <p style={{ color: 'var(--success)', fontSize: 14 }}>Accepted. GEN is credited to the name balance; finalization may still be pending.</p>
         ) : (
           <div style={{ display: 'flex', gap: 10 }}>
             <input
@@ -171,18 +186,19 @@ export default function NamePage() {
               step="0.0001"
               value={sendAmount}
               onChange={e => setSendAmount(e.target.value)}
-              disabled={sendStatus === 'pending'}
+              disabled={sendStatus === 'submitted'}
             />
             <button
               className="btn-holo"
               style={{ padding: '10px 20px', fontSize: 14, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}
               onClick={handleSend}
-              disabled={!sendAmount || !isConnected || sendStatus === 'pending'}
+              disabled={!sendAmount || !isConnected || sendStatus === 'submitted'}
             >
-              {sendStatus === 'pending' ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Send →'}
+              {sendStatus === 'submitted' ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Send →'}
             </button>
           </div>
         )}
+        {sendTxHash && <a href={getExplorerTxUrl(sendTxHash)} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: 'inline-block', fontSize: 11, color: 'rgba(123,47,255,0.8)' }}>View send on explorer</a>}
         {sendStatus === 'error' && <p style={{ marginTop: 10, fontSize: 13, color: 'var(--error)' }}>Failed. Check balance and try again.</p>}
         {!isConnected && <p style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>Connect wallet to send GEN</p>}
       </div>

@@ -11,7 +11,7 @@ export function usePolling<T>(
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(immediate)
   const [error, setError] = useState<string | null>(null)
-  const timerRef = useRef<NodeJS.Timeout>()
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
   const mountedRef = useRef(true)
 
   const fetch = useCallback(async () => {
@@ -22,9 +22,9 @@ export function usePolling<T>(
         setError(null)
         setLoading(false)
       }
-    } catch (e: any) {
+    } catch (e) {
       if (mountedRef.current) {
-        setError(e.message)
+        setError(e instanceof Error ? e.message : String(e))
         setLoading(false)
       }
     }
@@ -32,11 +32,12 @@ export function usePolling<T>(
 
   useEffect(() => {
     mountedRef.current = true
-    if (immediate) fetch()
+    const initialTimer = immediate ? setTimeout(fetch, 0) : undefined
     timerRef.current = setInterval(fetch, intervalMs)
     return () => {
       mountedRef.current = false
-      clearInterval(timerRef.current)
+      clearTimeout(initialTimer)
+      if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [fetch, intervalMs, immediate])
 

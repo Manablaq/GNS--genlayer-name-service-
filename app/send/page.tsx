@@ -1,19 +1,19 @@
 'use client'
 import { useState } from 'react'
-import { useAccount, useWalletClient } from 'wagmi'
+import { useAccount } from 'wagmi'
 import { parseEther } from 'viem'
 import { BottomNav } from '@/components/BottomNav'
-import { getRecord, normalizeName, shortAddress } from '@/lib/genlayer'
+import { getExplorerTxUrl, getRecord, normalizeName, shortAddress, waitForAccepted } from '@/lib/genlayer'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { CONTRACT_ADDRESS } from '@/lib/config'
 
 export default function SendPage() {
   const { address, isConnected } = useAccount()
-  const { data: walletClient } = useWalletClient()
   const [nameInput, setNameInput] = useState('')
   const [amount, setAmount] = useState('')
   const [resolvedAddr, setResolvedAddr] = useState('')
   const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'found' | 'not-found'>('idle')
-  const [sendStatus, setSendStatus] = useState<'idle' | 'pending' | 'done' | 'error'>('idle')
+  const [sendStatus, setSendStatus] = useState<'idle' | 'submitted' | 'accepted' | 'error'>('idle')
   const [txHash, setTxHash] = useState('')
   const [errMsg, setErrMsg] = useState('')
 
@@ -35,21 +35,33 @@ export default function SendPage() {
   }
 
   async function handleSend() {
-    if (!walletClient || !resolvedAddr || !amount) return
-    setSendStatus('pending')
+    if (!address || !resolvedAddr || !amount) return
+    setSendStatus('submitted')
     setErrMsg('')
 
     try {
-      // Plain wallet-to-wallet transfer — GEN goes directly to the owner's address
-      const hash = await walletClient.sendTransaction({
-        to: resolvedAddr as `0x${string}`,
+      const { createClient } = await import('genlayer-js')
+      const { testnetBradbury } = await import('genlayer-js/chains')
+      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
+      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
+      const client = createClient({
+        chain: testnetBradbury,
+        account: address as `0x${string}`,
+        provider,
+      })
+      const hash = await client.writeContract({
+        address: CONTRACT_ADDRESS,
+        functionName: 'send_to_name',
+        args: [normalizeName(nameInput)],
         value: parseEther(amount),
       })
       setTxHash(hash)
-      setSendStatus('done')
-    } catch (e: any) {
+      const receipt = await waitForAccepted(hash)
+      setSendStatus(receipt.success ? 'accepted' : 'error')
+      if (!receipt.success) setErrMsg(receipt.error || 'Transaction was not accepted before timeout.')
+    } catch (e) {
       setSendStatus('error')
-      setErrMsg((e?.message || String(e)).slice(0, 200))
+      setErrMsg((e instanceof Error ? e.message : String(e)).slice(0, 200))
     }
   }
 
@@ -67,22 +79,21 @@ export default function SendPage() {
         <p style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 }}>Transfer</p>
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>Send GEN</h1>
         <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 8 }}>
-          Type a <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>.gen</span> name — GEN goes straight to the owner's wallet
+          Type a <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>.gen</span> name — GEN is credited to the name&apos;s contract balance
         </p>
       </div>
 
-      {sendStatus === 'done' ? (
+      {sendStatus === 'accepted' ? (
         <div className="card fade-up" style={{ padding: '40px 24px', textAlign: 'center' }}>
-          <p style={{ fontSize: 48, marginBottom: 12 }}>✅</p>
-          <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Sent!</p>
+          <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Accepted</p>
           <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 4 }}>
             {amount} GEN → <span className="name-display" style={{ fontSize: 14 }}>{normalizeName(nameInput)}.gen</span>
           </p>
           <p style={{ color: 'var(--muted)', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', marginBottom: 20 }}>
-            Delivered to {shortAddress(resolvedAddr)}
+            Credited to the contract balance for {shortAddress(resolvedAddr)}. Bradbury finalization may still be pending.
           </p>
           {txHash && (
-            <a href={`https://explorer.testnet-chain.genlayer.com/tx/${txHash}`} target="_blank" rel="noreferrer"
+            <a href={getExplorerTxUrl(txHash)} target="_blank" rel="noreferrer"
               style={{ fontSize: 12, color: 'rgba(123,47,255,0.8)', display: 'block', marginBottom: 20 }}>
               View on explorer →
             </a>
@@ -165,10 +176,10 @@ export default function SendPage() {
               className="btn-holo fade-up"
               style={{ padding: '15px', fontSize: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               onClick={handleSend}
-              disabled={sendStatus === 'pending'}
+              disabled={sendStatus === 'submitted'}
             >
-              {sendStatus === 'pending'
-                ? <><div className="spinner" />Sending...</>
+              {sendStatus === 'submitted'
+                ? <><div className="spinner" />Submitted, waiting for accepted...</>
                 : `Send ${amount} GEN to ${normalizeName(nameInput)}.gen`}
             </button>
           )}

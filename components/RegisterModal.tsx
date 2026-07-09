@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useAccount } from 'wagmi'
-import { CONTRACT_ADDRESS } from '@/lib/config'
+import { BRADBURY_EXPLORER_URL, CONTRACT_ADDRESS } from '@/lib/config'
 import { TransactionStatus } from 'genlayer-js/types'
 
 interface Props {
@@ -26,22 +26,26 @@ export function RegisterModal({ name, onClose, onSuccess }: Props) {
     try {
       const { createClient } = await import('genlayer-js')
       const { testnetBradbury } = await import('genlayer-js/chains')
+      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
+      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
 
       const client = createClient({
         chain: testnetBradbury,
         account: address as `0x${string}`,
+        provider,
       })
 
       // Try to switch network — ignore if Snaps not available (Bradbury may already be added)
       try {
-        await (client as any).connect('testnetBradbury')
-      } catch (connectErr: any) {
+        await client.connect('testnetBradbury')
+      } catch (connectErr) {
         // wallet_getSnaps not supported — continue, user's wallet likely already on Bradbury
-        console.log('connect() skipped:', connectErr?.message)
+        const message = connectErr instanceof Error ? connectErr.message : String(connectErr)
+        console.log('connect() skipped:', message)
       }
 
       // Send the transaction — genlayer-js handles correct encoding
-      const hash = await (client as any).writeContract({
+      const hash = await client.writeContract({
         address: CONTRACT_ADDRESS,
         functionName: 'register',
         args: [name, '', '', '', '', ''],
@@ -52,7 +56,7 @@ export function RegisterModal({ name, onClose, onSuccess }: Props) {
       setStatus('pending')
 
       // Wait for ACCEPTED status
-      const receipt = await (client as any).waitForTransactionReceipt({
+      await client.waitForTransactionReceipt({
         hash,
         status: TransactionStatus.ACCEPTED,
         interval: 4000,
@@ -61,9 +65,9 @@ export function RegisterModal({ name, onClose, onSuccess }: Props) {
 
       setStatus('done')
       setTimeout(onSuccess, 1500)
-    } catch (e: any) {
+    } catch (e) {
       setStatus('error')
-      const msg = e?.message || String(e)
+      const msg = e instanceof Error ? e.message : String(e)
       setErrMsg(msg.slice(0, 300))
     }
   }
@@ -86,12 +90,14 @@ export function RegisterModal({ name, onClose, onSuccess }: Props) {
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
             <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-              {displayName} is yours!
+              {displayName} accepted
             </p>
-            <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>Name registered on GenLayer.</p>
+            <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>
+              The registration is readable now. Bradbury finalization may still be pending.
+            </p>
             {txHash && (
               <a
-                href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`}
+                href={`${BRADBURY_EXPLORER_URL}/tx/${txHash}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{ fontSize: 12, color: 'rgba(123,47,255,0.8)', fontFamily: 'JetBrains Mono, monospace' }}
@@ -125,8 +131,9 @@ export function RegisterModal({ name, onClose, onSuccess }: Props) {
 
             {status === 'pending' && txHash && (
               <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(0,232,121,0.06)', border: '1px solid rgba(0,232,121,0.2)', borderRadius: 10, fontSize: 12 }}>
-                <p style={{ color: 'var(--success)', marginBottom: 4 }}>Transaction submitted — awaiting validators...</p>
-                <a href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`} target="_blank" rel="noreferrer" style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
+                <p style={{ color: 'var(--success)', marginBottom: 4 }}>Transaction submitted — waiting for accepted state...</p>
+                <p style={{ color: 'var(--muted)', marginBottom: 6 }}>After acceptance, the name can be read while finalization remains pending.</p>
+                <a href={`${BRADBURY_EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noreferrer" style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
                   {txHash.slice(0, 20)}...
                 </a>
               </div>

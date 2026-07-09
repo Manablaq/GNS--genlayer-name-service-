@@ -1,10 +1,11 @@
 // lib/genlayer.ts
 // Reads go through /api/contract (which uses genlayer-js server-side)
 // Result is a JSON string that needs parsing
+import { BRADBURY_EXPLORER_URL } from '@/lib/config'
+import type { TransactionHash } from 'genlayer-js/types'
 
 export const TX_POLL_INTERVAL_MS = 3000
 export const TX_TIMEOUT_MS = 10 * 60 * 1000
-const RPC = 'https://rpc-bradbury.genlayer.com'
 
 async function readContract(method: string, args: unknown[] = []) {
   const res = await fetch('/api/contract', {
@@ -31,33 +32,33 @@ export async function getBalance(name: string) { return readContract('get_balanc
 export async function getNamesByOwner(address: string) { return readContract('get_names_by_owner', [address]) }
 export async function getStats() { return readContract('get_stats', []) }
 
-export async function waitForTx(
-  txHash: string,
-  onStatus?: (s: string) => void
-): Promise<{ success: boolean; status: string }> {
-  const start = Date.now()
-  while (Date.now() - start < TX_TIMEOUT_MS) {
-    try {
-      const id = Math.floor(Math.random() * 100000) + 1
-      const res = await fetch(RPC, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0', method: 'eth_getTransactionReceipt', id, params: [txHash]
-        }),
-      })
-      const json = await res.json()
-      const r = json.result
-      if (r) {
-        const success = r.status === '0x1'
-        onStatus?.(success ? 'FINALIZED' : 'FAILED')
-        return { success, status: success ? 'FINALIZED' : 'FAILED' }
-      }
-      onStatus?.('PENDING')
-    } catch {}
-    await new Promise(r => setTimeout(r, TX_POLL_INTERVAL_MS))
+export async function waitForAccepted(
+  txHash: TransactionHash,
+): Promise<{ success: boolean; status: 'ACCEPTED' | 'TIMEOUT' | 'ERROR'; error?: string }> {
+  try {
+    const { createClient } = await import('genlayer-js')
+    const { testnetBradbury } = await import('genlayer-js/chains')
+    const { TransactionStatus } = await import('genlayer-js/types')
+
+    const client = createClient({ chain: testnetBradbury })
+    await client.waitForTransactionReceipt({
+      hash: txHash,
+      status: TransactionStatus.ACCEPTED,
+      interval: TX_POLL_INTERVAL_MS,
+      retries: Math.ceil(TX_TIMEOUT_MS / TX_POLL_INTERVAL_MS),
+    })
+    return { success: true, status: 'ACCEPTED' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (message.toLowerCase().includes('timeout')) {
+      return { success: false, status: 'TIMEOUT', error: message }
+    }
+    return { success: false, status: 'ERROR', error: message }
   }
-  return { success: false, status: 'TIMEOUT' }
+}
+
+export function getExplorerTxUrl(txHash: string) {
+  return `${BRADBURY_EXPLORER_URL}/tx/${txHash}`
 }
 
 export function shortAddress(addr: string) {

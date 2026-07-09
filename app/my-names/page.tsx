@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import Image from 'next/image'
 import { useAccount } from 'wagmi'
 import { useRouter } from 'next/navigation'
 import { BottomNav } from '@/components/BottomNav'
@@ -61,7 +61,7 @@ export default function MyNamesPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     {n.avatar ? (
-                      <img src={n.avatar} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }} />
+                      <Image src={n.avatar} alt="" width={40} height={40} unoptimized style={{ borderRadius: '50%', objectFit: 'cover' }} />
                     ) : (
                       <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #7B2FFF, #FF2FA0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'white', fontFamily: 'Syne, sans-serif', flexShrink: 0 }}>
                         {(displayName[0] || '?').toUpperCase()}

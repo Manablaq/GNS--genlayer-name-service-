@@ -11,25 +11,26 @@ type CheckState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
 
 export default function HomePage() {
   const router = useRouter()
-  const { address, isConnected } = useAccount()
+  const { isConnected } = useAccount()
   const [input, setInput] = useState('')
   const [checkState, setCheckState] = useState<CheckState>('idle')
   const [showRegister, setShowRegister] = useState(false)
   const { data: stats } = usePolling(getStats, 5000)
-  const debounceRef = useRef<NodeJS.Timeout>()
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animRef = useRef<number>()
+  const animRef = useRef<number | null>(null)
 
   // Canvas background animation
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const activeCanvas = canvas
     const ctx = canvas.getContext('2d')!
     let width = 0, height = 0
 
     function resize() {
-      width = canvas.width = window.innerWidth
-      height = canvas.height = window.innerHeight
+      width = activeCanvas.width = window.innerWidth
+      height = activeCanvas.height = window.innerHeight
     }
     resize()
     window.addEventListener('resize', resize)
@@ -71,8 +72,6 @@ export default function HomePage() {
           d.r,
           0, Math.PI * 2
         )
-        // Gradient colors
-        const hue = (t * 20 + d.phase * 50) % 360
         ctx.fillStyle = `hsla(${270 + Math.sin(d.phase) * 40},80%,70%,${alpha})`
         ctx.fill()
       })
@@ -82,7 +81,7 @@ export default function HomePage() {
     draw()
     return () => {
       window.removeEventListener('resize', resize)
-      cancelAnimationFrame(animRef.current!)
+      if (animRef.current !== null) cancelAnimationFrame(animRef.current)
     }
   }, [])
 
@@ -94,7 +93,7 @@ export default function HomePage() {
       return
     }
     setCheckState('checking')
-    clearTimeout(debounceRef.current)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(async () => {
       try {
         const result = await checkAvailability(name)
@@ -184,7 +183,7 @@ export default function HomePage() {
               style={{ padding: '10px 20px', fontSize: 14, borderRadius: 10, flexShrink: 0 }}
               onClick={() => {
                 if (checkState === 'taken') router.push(`/name/${normalized}`)
-                if (checkState === 'available') isConnected && setShowRegister(true)
+                if (checkState === 'available' && isConnected) setShowRegister(true)
               }}
               disabled={checkState === 'idle' || checkState === 'checking' || checkState === 'invalid'}
             >
