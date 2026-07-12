@@ -2,6 +2,22 @@
 
 Deployment and manual evidence remain **PENDING** for every finding.
 
+## Bradbury schema compatibility
+
+The previous failing `contracts/gns.py` source had SHA-256
+`9398e1f2b861df835cbb25869850f43a4061598de21045850ed31d92a7bec4f1`.
+Removing only the incompatible second leading comment produced corrected SHA-256
+`d5d622d5f238c0a4ffde28797d51acf72732b0c7047bdfc9f743518b1fd37eb3`.
+Bradbury schema generation succeeds for the corrected source and exposes exactly
+11 public methods: 6 views and 5 writes. All 5 writes are non-payable. There is no
+`send_to_name`, `withdraw`, `get_balance`, balance ledger, or
+`total_transferred` API.
+
+Deployment and manual Bradbury evidence remain **PENDING**. The latest Direct Mode
+rerun was blocked before contract execution because the pinned genvm
+`v0.3.0-rc7` artifact URL returned HTTP 404. This infrastructure/artifact failure
+is not a test failure or contract failure.
+
 | Finding | Rejected behavior and legacy evidence | V2 correction | Automated evidence | Deployment/manual |
 |---|---|---|---|---|
 | Custodial payment design | `contracts/legacy/gns_rejected.py:51`, `:236`, `:255`, `:270`: balance ledger, payable send, withdrawal, and defective `gl.transfer` | Resolver-only; no payment or balance API | `StructureTests.test_no_custody_surface` | PENDING |

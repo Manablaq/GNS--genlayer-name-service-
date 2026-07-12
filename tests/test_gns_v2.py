@@ -56,9 +56,18 @@ GNS = load_helpers()
 
 
 class StructureTests(unittest.TestCase):
-    def test_dependency_header_is_first_line(self):
-        self.assertEqual(SOURCE.splitlines()[0],
-                         '# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }')
+    def test_bradbury_source_packaging_header(self):
+        lines = SOURCE.splitlines()
+        self.assertEqual(
+            lines[0],
+            '# { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }',
+        )
+        self.assertFalse(lines[1].startswith("#"))
+        self.assertTrue(lines[1].startswith(("from ", "import ")))
+        first_statement = TREE.body[0]
+        self.assertIsInstance(first_statement, (ast.Import, ast.ImportFrom))
+        self.assertEqual(first_statement.lineno, 2)
+        self.assertNotIn("GNS V2 resolver-only candidate", "\n".join(lines[:2]))
 
     def test_legacy_hash(self):
         self.assertEqual(hashlib.sha256(LEGACY.read_bytes()).hexdigest(),

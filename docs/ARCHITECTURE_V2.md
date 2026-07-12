@@ -31,6 +31,17 @@ Official API references consulted on 2026-07-12:
 - <https://docs.genlayer.com/developers/intelligent-contracts/equivalence-principle>
 - <https://docs.genlayer.com/developers/intelligent-contracts/features/non-determinism>
 
+## Bradbury source packaging
+
+The pinned `py-genlayer` dependency declaration must be the sole leading comment
+and remain on line 1. Imports begin immediately on line 2. The former descriptive
+second comment, `GNS V2 resolver-only candidate`, reproducibly caused Bradbury
+schema generation to fail with `VMError: invalid_contract`; removing only that
+comment produced a valid schema. Repeated A/B schema probes established this as a
+Bradbury compatibility rule. Official documentation requires the dependency
+declaration on line 1, but does not explicitly document the restriction against a
+second consecutive leading comment.
+
 ## Names and profiles
 
 One deterministic normalizer rejects whitespace changes and non-ASCII input,
