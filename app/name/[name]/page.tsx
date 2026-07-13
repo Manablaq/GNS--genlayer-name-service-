@@ -1,85 +1,19 @@
 'use client'
-import { useState } from 'react'
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import { BottomNav } from '@/components/BottomNav'
-import { getExplorerTxUrl, getRecord, shortAddress, formatGEN, waitForAccepted } from '@/lib/genlayer'
+import { getRecord, shortAddress } from '@/lib/genlayer'
 import { usePolling } from '@/hooks/usePolling'
-import { CONTRACT_ADDRESS } from '@/lib/config'
 
 export default function NamePage() {
   const { name } = useParams<{ name: string }>()
   const router = useRouter()
   const { address, isConnected } = useAccount()
-  const { data: record, loading, refetch } = usePolling(() => getRecord(name), 5000)
-  const [sendAmount, setSendAmount] = useState('')
-  const [sendStatus, setSendStatus] = useState<'idle' | 'submitted' | 'accepted' | 'error'>('idle')
-  const [withdrawStatus, setWithdrawStatus] = useState<'idle' | 'submitted' | 'accepted' | 'error'>('idle')
-  const [sendTxHash, setSendTxHash] = useState('')
-  const [withdrawTxHash, setWithdrawTxHash] = useState('')
+  const { data: record, loading } = usePolling(() => getRecord(name), 5000)
 
   const displayName = `${name}.gen`
   const isOwner = address?.toLowerCase() === record?.owner?.toLowerCase()
-
-
-
-  async function handleSend() {
-    if (!address || !sendAmount) return
-    setSendStatus('submitted')
-    try {
-      const { createClient } = await import('genlayer-js')
-      const { testnetBradbury } = await import('genlayer-js/chains')
-      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
-      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
-      const client = createClient({
-        chain: testnetBradbury,
-        account: address as `0x${string}`,
-        provider,
-      })
-      const wei = BigInt(Math.floor(Number(sendAmount) * 1e18))
-      const txHash = await client.writeContract({
-        address: CONTRACT_ADDRESS,
-        functionName: 'send_to_name',
-        args: [name],
-        value: wei,
-      })
-      setSendTxHash(txHash)
-      const r = await waitForAccepted(txHash)
-      if (r.success) {
-        setSendStatus('accepted')
-        refetch()
-      } else setSendStatus('error')
-    } catch { setSendStatus('error') }
-  }
-
-  async function handleWithdraw() {
-    if (!address) return
-    setWithdrawStatus('submitted')
-    try {
-      const { createClient } = await import('genlayer-js')
-      const { testnetBradbury } = await import('genlayer-js/chains')
-      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
-      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
-      const client = createClient({
-        chain: testnetBradbury,
-        account: address as `0x${string}`,
-        provider,
-      })
-      const txHash = await client.writeContract({
-        address: CONTRACT_ADDRESS,
-        functionName: 'withdraw',
-        args: [name],
-        value: 0n,
-      })
-      setWithdrawTxHash(txHash)
-      const r = await waitForAccepted(txHash)
-      if (r.success) {
-        setWithdrawStatus('accepted')
-        refetch()
-      } else setWithdrawStatus('error')
-    } catch { setWithdrawStatus('error') }
-  }
 
   if (loading) return (
     <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -95,9 +29,6 @@ export default function NamePage() {
       <BottomNav />
     </main>
   )
-
-  const balance = record?.balance || '0'
-  const hasBalance = BigInt(balance) > 0n
 
   return (
     <main style={{ minHeight: '100vh', padding: '60px 20px 120px', maxWidth: 600, margin: '0 auto' }}>
@@ -123,7 +54,7 @@ export default function NamePage() {
             )}
             <div>
               <h1 className="name-display" style={{ fontSize: 'clamp(22px,5vw,32px)' }}>{displayName}</h1>
-              <div className="address-chip" style={{ marginTop: 6 }}>{shortAddress(record.address || '')}</div>
+              <div className="address-chip" style={{ marginTop: 6 }}>{shortAddress(record.resolved || '')}</div>
             </div>
           </div>
 
@@ -139,68 +70,16 @@ export default function NamePage() {
             {record.website && <a href={record.website} target="_blank" rel="noreferrer" className="tag tag-holo">↗ website</a>}
           </div>
 
-          {/* Registered */}
-          <p style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-            Registered {record.registered_at ? new Date(record.registered_at).toLocaleDateString() : ''}
-          </p>
         </div>
       </div>
 
-      {/* Balance card */}
-      <div className="card fade-up-d1" style={{ padding: '20px 24px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <p style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 6, fontFamily: 'JetBrains Mono, monospace' }}>Balance</p>
-            <p className="font-display" style={{ fontSize: 26, fontWeight: 800, color: hasBalance ? 'var(--success)' : 'var(--muted)' }}>
-              {formatGEN(balance)}
-            </p>
-          </div>
-          {isOwner && hasBalance && (
-            <button
-              className="btn-holo"
-              style={{ padding: '10px 18px', fontSize: 13 }}
-              onClick={handleWithdraw}
-              disabled={withdrawStatus === 'submitted'}
-            >
-              {withdrawStatus === 'submitted' ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Withdraw'}
-            </button>
-          )}
-        </div>
-        {withdrawStatus === 'accepted' && <p style={{ marginTop: 10, fontSize: 13, color: 'var(--success)' }}>Withdrawal accepted. Finalization may still be pending.</p>}
-        {withdrawTxHash && <a href={getExplorerTxUrl(withdrawTxHash)} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: 'inline-block', fontSize: 11, color: 'rgba(123,47,255,0.8)' }}>View withdrawal on explorer</a>}
-      </div>
-
-      {/* Send GEN */}
+      {/* Direct wallet send */}
       <div className="card fade-up-d2" style={{ padding: '20px 24px', marginBottom: 16 }}>
         <p style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Send GEN to {displayName}</p>
-        {sendStatus === 'accepted' ? (
-          <p style={{ color: 'var(--success)', fontSize: 14 }}>Accepted. GEN is credited to the name balance; finalization may still be pending.</p>
-        ) : (
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              className="gns-input"
-              style={{ padding: '10px 14px', fontSize: 14 }}
-              placeholder="Amount in GEN"
-              type="number"
-              min="0"
-              step="0.0001"
-              value={sendAmount}
-              onChange={e => setSendAmount(e.target.value)}
-              disabled={sendStatus === 'submitted'}
-            />
-            <button
-              className="btn-holo"
-              style={{ padding: '10px 20px', fontSize: 14, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6 }}
-              onClick={handleSend}
-              disabled={!sendAmount || !isConnected || sendStatus === 'submitted'}
-            >
-              {sendStatus === 'submitted' ? <div className="spinner" style={{ width: 14, height: 14 }} /> : 'Send →'}
-            </button>
-          </div>
-        )}
-        {sendTxHash && <a href={getExplorerTxUrl(sendTxHash)} target="_blank" rel="noreferrer" style={{ marginTop: 8, display: 'inline-block', fontSize: 11, color: 'rgba(123,47,255,0.8)' }}>View send on explorer</a>}
-        {sendStatus === 'error' && <p style={{ marginTop: 10, fontSize: 13, color: 'var(--error)' }}>Failed. Check balance and try again.</p>}
-        {!isConnected && <p style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>Connect wallet to send GEN</p>}
+        <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 14 }}>Payments go directly from your wallet to the resolved address. GNS V2 never takes custody.</p>
+        <button className="btn-holo" style={{ padding: '10px 20px', fontSize: 14 }} onClick={() => router.push(`/send?name=${name}`)} disabled={!isConnected}>
+          Continue to wallet send →
+        </button>
       </div>
 
       {/* Owner actions */}

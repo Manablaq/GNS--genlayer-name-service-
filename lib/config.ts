@@ -1,4 +1,4 @@
-export const CONTRACT_ADDRESS = '0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2' as `0x${string}`
+export const CONTRACT_ADDRESS = '0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9' as `0x${string}`
 export const BRADBURY_RPC_URL = 'https://rpc-bradbury.genlayer.com'
 export const BRADBURY_EXPLORER_URL = 'https://explorer-bradbury.genlayer.com'
 

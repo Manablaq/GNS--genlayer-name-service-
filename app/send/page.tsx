@@ -1,14 +1,14 @@
 'use client'
 import { useState } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount, useSendTransaction } from 'wagmi'
 import { parseEther } from 'viem'
 import { BottomNav } from '@/components/BottomNav'
-import { getExplorerTxUrl, getRecord, normalizeName, shortAddress, waitForAccepted } from '@/lib/genlayer'
+import { getExplorerTxUrl, getRecord, normalizeName, shortAddress } from '@/lib/genlayer'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { CONTRACT_ADDRESS } from '@/lib/config'
 
 export default function SendPage() {
   const { address, isConnected } = useAccount()
+  const { sendTransactionAsync } = useSendTransaction()
   const [nameInput, setNameInput] = useState('')
   const [amount, setAmount] = useState('')
   const [resolvedAddr, setResolvedAddr] = useState('')
@@ -25,8 +25,8 @@ export default function SendPage() {
     try {
       const record = await getRecord(name)
       const found = record?.found === true || record?.found === 'true'
-      if (found && record?.address) {
-        setResolvedAddr(record.address)
+      if (found && record?.resolved) {
+        setResolvedAddr(record.resolved)
         setLookupState('found')
       } else {
         setLookupState('not-found')
@@ -40,25 +40,12 @@ export default function SendPage() {
     setErrMsg('')
 
     try {
-      const { createClient } = await import('genlayer-js')
-      const { testnetBradbury } = await import('genlayer-js/chains')
-      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
-      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
-      const client = createClient({
-        chain: testnetBradbury,
-        account: address as `0x${string}`,
-        provider,
-      })
-      const hash = await client.writeContract({
-        address: CONTRACT_ADDRESS,
-        functionName: 'send_to_name',
-        args: [normalizeName(nameInput)],
+      const hash = await sendTransactionAsync({
+        to: resolvedAddr as `0x${string}`,
         value: parseEther(amount),
       })
       setTxHash(hash)
-      const receipt = await waitForAccepted(hash)
-      setSendStatus(receipt.success ? 'accepted' : 'error')
-      if (!receipt.success) setErrMsg(receipt.error || 'Transaction was not accepted before timeout.')
+      setSendStatus('accepted')
     } catch (e) {
       setSendStatus('error')
       setErrMsg((e instanceof Error ? e.message : String(e)).slice(0, 200))
@@ -79,7 +66,7 @@ export default function SendPage() {
         <p style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 }}>Transfer</p>
         <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>Send GEN</h1>
         <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 8 }}>
-          Type a <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>.gen</span> name — GEN is credited to the name&apos;s contract balance
+          Resolve a <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>.gen</span> name and send GEN directly to its resolved address
         </p>
       </div>
 
@@ -90,7 +77,7 @@ export default function SendPage() {
             {amount} GEN → <span className="name-display" style={{ fontSize: 14 }}>{normalizeName(nameInput)}.gen</span>
           </p>
           <p style={{ color: 'var(--muted)', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', marginBottom: 20 }}>
-            Credited to the contract balance for {shortAddress(resolvedAddr)}. Bradbury finalization may still be pending.
+            Submitted directly to {shortAddress(resolvedAddr)}. GNS V2 does not receive or hold the funds.
           </p>
           {txHash && (
             <a href={getExplorerTxUrl(txHash)} target="_blank" rel="noreferrer"
@@ -179,7 +166,7 @@ export default function SendPage() {
               disabled={sendStatus === 'submitted'}
             >
               {sendStatus === 'submitted'
-                ? <><div className="spinner" />Submitted, waiting for accepted...</>
+                ? <><div className="spinner" />Confirm in wallet...</>
                 : `Send ${amount} GEN to ${normalizeName(nameInput)}.gen`}
             </button>
           )}

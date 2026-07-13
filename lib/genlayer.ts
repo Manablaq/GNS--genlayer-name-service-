@@ -28,8 +28,9 @@ export async function checkAvailability(name: string) { return readContract('is_
 export async function getRecord(name: string) { return readContract('get_record', [name]) }
 export async function resolve(name: string) { return readContract('resolve', [name]) }
 export async function reverseResolve(address: string) { return readContract('reverse_resolve', [address]) }
-export async function getBalance(name: string) { return readContract('get_balance', [name]) }
-export async function getNamesByOwner(address: string) { return readContract('get_names_by_owner', [address]) }
+export async function getNamesByOwner(address: string, offset = 0, limit = 50) {
+  return readContract('get_names_by_owner', [address, offset, limit])
+}
 export async function getStats() { return readContract('get_stats', []) }
 
 export async function waitForAccepted(
@@ -64,16 +65,6 @@ export function getExplorerTxUrl(txHash: string) {
 export function shortAddress(addr: string) {
   if (!addr || addr.length < 10) return addr
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-}
-
-export function formatGEN(wei: string | number) {
-  try {
-    const n = BigInt(wei)
-    const eth = Number(n) / 1e18
-    if (eth === 0) return '0 GEN'
-    if (eth < 0.0001) return '< 0.0001 GEN'
-    return `${eth.toFixed(4)} GEN`
-  } catch { return '0 GEN' }
 }
 
 export function normalizeName(name: string) {

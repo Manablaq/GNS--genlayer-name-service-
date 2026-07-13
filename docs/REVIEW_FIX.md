@@ -1,51 +1,64 @@
 # Professional reviewer fix evidence map
 
-Deployment and manual evidence remain **PENDING** for every finding.
+Deployment, source identity, registration, and the listed read paths are verified
+for the final corrected GNS V2 deployment. Unexecuted lifecycle scenarios remain
+unverified.
+
+## Deployment history
+
+- Rejected legacy contract: `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2`.
+  This retired custodial design is historical evidence only.
+- First GNS V2 deployment: `0xE97158b59B7D80F2c911b90906690B3B57722eb8`.
+  Two registrations ended in `LEADER_TIMEOUT`; this deployment is superseded and
+  was never registration-verified.
+- Final corrected GNS V2 deployment:
+  `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`. This is the active deployment and
+  is deployment-, source-, registration-, and read-verified.
 
 ## Bradbury nondeterministic callable A/B
 
-Two valid-format registration attempts against deployed GNS V2
-`0xE97158b59B7D80F2c911b90906690B3B57722eb8` ended in `LEADER_TIMEOUT`:
-`0x4f04162417040f4ffccf1f27dedff34469365b8c3c5075862c076b42c93579c3` and
-`0xe22ff1237ddec16c24e341e614fc265e93be1c56e1555f7902762ca144788a27`.
+The controlled same-prompt, same-input, same-schema, same-validation A/B produced
+`ACCEPTED` / `AGREE` for nested functions and `UNDETERMINED` / `NO_MAJORITY` for
+module-level callable classes with bound `__call__` methods. The corrected GNS
+source uses nested `leader_fn` and `validator_fn` directly inside `register` and
+subsequently registered and indexed `sundayalbert.gen` successfully.
 
-A controlled same-prompt, same-input, same-schema, same-validation A/B then
-produced `ACCEPTED` / `AGREE` for nested functions and `UNDETERMINED` /
-`NO_MAJORITY` for module-level callable classes with bound `__call__` methods.
-The full addresses, hashes, execution results, and evidentiary limitation are in
-`BRADBURY_NONDET_AB.md`. The source correction uses nested `leader_fn` and
-`validator_fn` directly inside `register`. The currently deployed GNS V2 address
-is not registration-verified, and a new deployment is required. Deployment and
-registration verification remain **PENDING**.
+This evidence isolates callable shape as the meaningful tested difference. It
+does not prove the exact internal GenVM mechanism. Full probe addresses, hashes,
+and results are retained in `BRADBURY_NONDET_AB.md`.
 
-## Bradbury schema compatibility
+## Schema and source identity
 
-The previous failing `contracts/gns.py` source had SHA-256
-`9398e1f2b861df835cbb25869850f43a4061598de21045850ed31d92a7bec4f1`.
-Removing only the incompatible second leading comment produced corrected SHA-256
-`d5d622d5f238c0a4ffde28797d51acf72732b0c7047bdfc9f743518b1fd37eb3`.
-Bradbury schema generation succeeds for the corrected source and exposes exactly
-11 public methods: 6 views and 5 writes. All 5 writes are non-payable. There is no
-`send_to_name`, `withdraw`, `get_balance`, balance ledger, or
-`total_transferred` API.
+The deployed source SHA-256 is
+`70c3906b73bae54e6669f79b4d332e72b63fe167902c21f1ae5850c85fec4d9f`, matching
+`contracts/gns.py`. Bradbury exposes exactly 11 public methods: 6 views and 5
+non-payable writes. There is no `send_to_name`, `withdraw`, `get_balance`, balance
+ledger, or `total_transferred` API.
 
-Deployment and manual Bradbury evidence remain **PENDING**. The latest Direct Mode
-rerun was blocked before contract execution because the pinned genvm
-`v0.3.0-rc7` artifact URL returned HTTP 404. This infrastructure/artifact failure
-is not a test failure or contract failure.
+## Final Bradbury verification
 
-| Finding | Rejected behavior and legacy evidence | V2 correction | Automated evidence | Deployment/manual |
-|---|---|---|---|---|
-| Custodial payment design | `contracts/legacy/gns_rejected.py:51`, `:236`, `:255`, `:270`: balance ledger, payable send, withdrawal, and defective `gl.transfer` | Resolver-only; no payment or balance API | `StructureTests.test_no_custody_surface` | PENDING |
-| Unsafe name validation/moderation | `contracts/legacy/gns_rejected.py:23-43`, `:70-121`: silent trim, Unicode `isalnum`, nested evaluator with owner/profile, approval default | Strict ASCII canonicalizer, exact reserved policy, bounded canonical-name-only payload, documented nested nondeterministic functions, `response_format=json`, strict fail-closed dictionary validator, stable `UserError` boundaries | Unit parser and AST/source tests plus Direct Mode rejection/atomicity tests | PENDING |
-| Format-only validator settlement | `contracts/legacy/gns_rejected.py:110-114`: explicitly format-only/no-semantic criteria | Custom validators independently moderate and exact-match approval/category | `test_semantic_consensus_language_and_comparison` | PENDING |
-| Unbounded/incomplete ownership lookup | `contracts/legacy/gns_rejected.py:340-371`: scans global keys and stops at 200 | Maintained owner slots/reverse positions with 50-item pagination | `test_direct_bounded_owner_index`, `OwnerIndexModelTests` | PENDING |
-| Unsafe ownership/address lifecycle | `contracts/legacy/gns_rejected.py:177-233`: string-shape checks and unsafe transfer/primary policy | Typed nonzero `Address`; swap-and-pop transfer; resolution reset; old primary cleared; new primary untouched | `test_typed_storage`, `test_transfer_policy_source_model`, `test_swap_pop_transfer_and_primary` | PENDING |
+| Check | Evidence | Status |
+|---|---|---|
+| Deployment receipt | `0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565`: `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN` | VERIFIED |
+| Deployed source hash | SHA-256 matches `contracts/gns.py` | VERIFIED |
+| Registration consensus and execution | `0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76`: `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`; approved `true`, category `safe` | VERIFIED |
+| Availability | `is_available("sundayalbert") == false` | VERIFIED |
+| Forward resolution | Found with `0x5bB49021001200fE8156a81c7fcF097e535e7181` | VERIFIED |
+| Complete record | Owner, resolved address, and profile fields matched | VERIFIED |
+| Reverse resolution | `sundayalbert.gen` | VERIFIED |
+| Owner pagination/index | `total=1`, `names=["sundayalbert.gen"]` | VERIFIED |
+| Total-name statistics | `total_names=1` | VERIFIED |
+| Profile update, set-address, primary change, transfer | Not separately executed | UNVERIFIED |
 
-The offline suite proves deterministic helpers, strict parsing, source structure,
-and an in-memory index model. Official Direct Mode additionally proves deployment,
-structured LLM mocks, typed storage, address behavior,
-authorization, 205-name pagination, TreeMap deletion, and swap-and-pop transfer.
-`genvm-lint check contracts/gns.py` passes all three checks plus SDK validation.
-The controlled Bradbury A/B is recorded evidence, but the corrected GNS source
-has not been deployed or registration-verified. Those items remain PENDING.
+## Finding map
+
+| Finding | V2 correction | Automated evidence | Deployment/manual scope |
+|---|---|---|---|
+| Custodial payment design | Resolver-only; no payment or balance API | `StructureTests.test_no_custody_surface` | Deployed schema VERIFIED |
+| Unsafe name validation/moderation | Strict ASCII canonicalizer, bounded canonical-only payload, nested nondeterministic functions, strict fail-closed result validation | Parser, AST/source, and Direct Mode tests | `sundayalbert.gen` moderation VERIFIED; other names not manually exercised |
+| Format-only validator settlement | Validators independently moderate and exact-match approval/category | `test_semantic_consensus_language_and_comparison` | Successful registration consensus VERIFIED |
+| Unbounded ownership lookup | Maintained owner slots/reverse positions with 50-item pagination | `test_direct_bounded_owner_index`, `OwnerIndexModelTests` | Registered owner's first page VERIFIED |
+| Unsafe ownership/address lifecycle | Typed nonzero `Address`, swap-and-pop transfer, resolution reset, primary cleanup | Typed-storage and transfer model tests | Registration owner/address VERIFIED; updates and transfer UNVERIFIED |
+
+The archived legacy source and the first V2 deployment remain available as
+historical reviewer evidence. They are not active frontend targets.

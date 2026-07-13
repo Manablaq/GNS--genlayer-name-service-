@@ -2,14 +2,14 @@
 
 ## Triggering GNS evidence
 
-The currently deployed GNS V2 contract is
+The first, now superseded and unverified GNS V2 deployment was
 `0xE97158b59B7D80F2c911b90906690B3B57722eb8`. Two valid-format registration
 attempts reached the exact final status `LEADER_TIMEOUT`:
 
 - `0x4f04162417040f4ffccf1f27dedff34469365b8c3c5075862c076b42c93579c3`
 - `0xe22ff1237ddec16c24e341e614fc265e93be1c56e1555f7902762ca144788a27`
 
-These receipts do not registration-verify the deployed GNS V2 address.
+These receipts do not registration-verify that historical GNS V2 address.
 
 ## Controlled A/B
 
@@ -44,7 +44,11 @@ the difference.
 ## Source consequence and verification state
 
 GNS V2 now uses nested `leader_fn` and `validator_fn` functions inside
-`register`, passed directly to `gl.vm.run_nondet_unsafe`. No registration or
-deployment is marked verified. The currently deployed GNS V2 address is not
-registration-verified, and a new deployment is required after this source
-correction.
+`register`, passed directly to `gl.vm.run_nondet_unsafe`. The corrected source was
+subsequently deployed at `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9` and
+successfully registered and indexed `sundayalbert.gen`. Its deployment and
+registration both finished `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`.
+
+The evidence isolates callable shape as the meaningful tested difference: the
+nested probe succeeded, while the callable-class probe reached `UNDETERMINED` /
+`NO_MAJORITY`. It does not prove the exact internal GenVM mechanism.

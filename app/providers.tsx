@@ -1,14 +1,14 @@
 'use client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { WagmiProvider, http } from 'wagmi'
-import { RainbowKitProvider, getDefaultConfig, darkTheme } from '@rainbow-me/rainbowkit'
+import { WagmiProvider, createConfig, http } from 'wagmi'
+import { injected } from 'wagmi/connectors'
+import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
 import '@rainbow-me/rainbowkit/styles.css'
 import { BRADBURY_CHAIN } from '@/lib/config'
 
-const config = getDefaultConfig({
-  appName: 'GNS — GenLayer Name Service',
-  projectId: 'gns-genlayer-2026',
+const config = createConfig({
   chains: [BRADBURY_CHAIN],
+  connectors: [injected()],
   transports: { [BRADBURY_CHAIN.id]: http() },
   ssr: false,
 })

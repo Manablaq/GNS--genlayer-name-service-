@@ -92,9 +92,20 @@ Official `genlayer-test` 0.29.2 Direct Mode tests run against the exact pinned
 `py-genlayer` hash. They cover deployment, structured moderation, authorization,
 typed records, transfer, primary cleanup, pagination, 205 registrations, and real
 TreeMap swap-and-pop deletion. `genvm-linter` 0.11.0 passes all three lint checks
-and SDK semantic validation. The currently deployed GNS V2 address is not
-registration-verified. A new deployment is required after this source correction;
-deployment and registration verification remain PENDING.
+and SDK semantic validation. The corrected source was deployed to Bradbury at
+`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`. Its deployed source SHA-256 is
+`70c3906b73bae54e6669f79b4d332e72b63fe167902c21f1ae5850c85fec4d9f`, matching
+`contracts/gns.py`. Deployment transaction
+`0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565`
+finished `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`.
+
+Registration transaction
+`0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76`
+registered `sundayalbert.gen` with moderation approved in category `safe` and
+finished `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`. Availability, forward
+resolution, complete record, reverse resolution, paginated owner index, and
+total-name statistics were read-verified. No claim is made for unexecuted update,
+address-change, primary-change, or transfer scenarios.
 
 ## Ownership policy
 

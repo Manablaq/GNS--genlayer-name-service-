@@ -1,9 +1,8 @@
 'use client'
-import Image from 'next/image'
 import { useAccount } from 'wagmi'
 import { useRouter } from 'next/navigation'
 import { BottomNav } from '@/components/BottomNav'
-import { getNamesByOwner, shortAddress, formatGEN, normalizeName } from '@/lib/genlayer'
+import { getNamesByOwner, shortAddress } from '@/lib/genlayer'
 import { usePolling } from '@/hooks/usePolling'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 
@@ -14,7 +13,7 @@ export default function MyNamesPage() {
     () => address ? getNamesByOwner(address) : Promise.resolve([]),
     5000
   )
-  const names = Array.isArray(_names) ? _names : []
+  const names: string[] = Array.isArray(_names?.names) ? _names.names : []
 
 
 
@@ -49,8 +48,7 @@ export default function MyNamesPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {names.map((n, i) => {
-            const displayName = n.name || `${normalizeName(n.name || '')}.gen`
-            const hasBalance = BigInt(n.balance || '0') > 0n
+            const displayName = n
             return (
               <div
                 key={i}
@@ -60,22 +58,14 @@ export default function MyNamesPage() {
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    {n.avatar ? (
-                      <Image src={n.avatar} alt="" width={40} height={40} unoptimized style={{ borderRadius: '50%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #7B2FFF, #FF2FA0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'white', fontFamily: 'Syne, sans-serif', flexShrink: 0 }}>
-                        {(displayName[0] || '?').toUpperCase()}
-                      </div>
-                    )}
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg, #7B2FFF, #FF2FA0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'white', fontFamily: 'Syne, sans-serif', flexShrink: 0 }}>
+                      {(displayName[0] || '?').toUpperCase()}
+                    </div>
                     <div>
                       <p className="name-display" style={{ fontSize: 18 }}>{displayName}</p>
-                      {n.bio && <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{n.bio.slice(0, 50)}{n.bio.length > 50 ? '…' : ''}</p>}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    {hasBalance && (
-                      <span className="tag tag-success">{formatGEN(n.balance)}</span>
-                    )}
                     <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>→ View</p>
                   </div>
                 </div>

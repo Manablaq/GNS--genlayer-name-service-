@@ -1,13 +1,13 @@
 # GNS - GenLayer Name Service
 
-GNS is a GenLayer Bradbury testnet app for registering `.gen` names, resolving them to wallet addresses, and sending GEN to a name's contract balance.
+GNS V2 is a non-custodial GenLayer Bradbury testnet registry for `.gen` names, profiles, forward resolution, reverse resolution, and direct wallet payments to resolved addresses.
 
 ## Links
 
 - Live app: https://dotgenapp.vercel.app
 - GitHub repo: https://github.com/Manablaq/GNS--genlayer-name-service-
-- Contract: `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2`
-- Explorer: https://explorer-bradbury.genlayer.com/address/0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2
+- Active GNS V2 contract: `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`
+- Explorer: https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9
 
 ## Network
 
@@ -21,32 +21,33 @@ GNS is a GenLayer Bradbury testnet app for registering `.gen` names, resolving t
 
 The contract source is [contracts/gns.py](contracts/gns.py). It is a Python GenLayer Intelligent Contract using `from genlayer import *`, `gl.Contract`, `TreeMap` storage, and `@gl.public.write` / `@gl.public.view` methods.
 
+The deployed schema has exactly 11 public methods: five non-payable writes and six views.
+
 Write methods:
 - `register(name, avatar, bio, twitter, github, website)`
 - `update_profile(name, avatar, bio, twitter, github, website)`
 - `set_address(name, new_address)`
 - `set_primary(name)`
 - `transfer(name, new_owner)`
-- `send_to_name(name)` payable
-- `withdraw(name)`
 
 Read methods:
 - `resolve(name)`
 - `reverse_resolve(address)`
 - `get_record(name)`
 - `is_available(name)`
-- `get_balance(name)`
-- `get_names_by_owner(owner)`
+- `get_names_by_owner(owner, offset, limit)`
 - `get_stats()`
 
 There are no separate owner/admin methods.
 
 ## Frontend and API Behavior
 
-- Frontend config points to `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2` on Bradbury chain ID `4221`.
+- Frontend config points to `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9` on Bradbury chain ID `4221`.
 - Reads go through `POST /api/contract`, which calls `genlayer-js` `readContract` against the deployed contract.
 - The API allowlists read methods only and validates name/address arguments. It does not execute arbitrary method names from request bodies.
-- Wallet writes happen client-side through the connected browser wallet using `genlayer-js`.
+- Contract writes happen client-side through the injected browser wallet using `genlayer-js`.
+- GEN payments resolve the name first and then use the injected wallet to send directly to the resolved address; the contract is not a payment destination.
+- No WalletConnect project or connector is configured.
 - The server API does not use a private key or server-side wallet for reads.
 
 ## Transaction Lifecycle
@@ -89,18 +90,22 @@ Manual checks:
 - Search a name and confirm availability comes from the API route.
 - Register a name and confirm the UI reports accepted, not finalized.
 - Resolve a registered name and confirm profile data comes from contract reads.
-- Send GEN to a name and confirm it is credited to the name balance before withdrawal.
+- Send GEN to a name and confirm the wallet transaction targets the resolved address directly.
 
 ## Deployment Proof
 
 - Live deployment: https://dotgenapp.vercel.app
-- Deployed contract explorer page: https://explorer-bradbury.genlayer.com/address/0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2
+- Deployed contract explorer page: https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9
+- Deployment transaction: `0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565`
+- Registration transaction: `0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76`
+- Deployed source SHA-256: `70c3906b73bae54e6669f79b4d332e72b63fe167902c21f1ae5850c85fec4d9f`
+- Verified registration: `sundayalbert.gen`, owned by and resolving to `0x5bB49021001200fE8156a81c7fcF097e535e7181`
 - Repository: https://github.com/Manablaq/GNS--genlayer-name-service-
 
 ## Limitations
 
 - `.gen` names are app-specific records in this contract. They are not ENS names.
 - Ownership proof is limited to the owner/address fields stored by the contract.
-- `get_names_by_owner` scans up to 200 stored names.
-- GEN sent through `send_to_name` is credited to the name balance and must be withdrawn by the name owner.
+- `get_names_by_owner` is paginated with a maximum page size of 50.
+- Historical addresses are documented in `docs/LEGACY_RETIREMENT.md` and `docs/BRADBURY_NONDET_AB.md`; neither is active.
 - Accepted transactions may still be pending finalization on Bradbury.
