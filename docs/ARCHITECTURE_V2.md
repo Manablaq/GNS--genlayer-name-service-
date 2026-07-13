@@ -58,15 +58,12 @@ or hyphen, with alphanumeric first/last characters and no `@` or URL syntax.
 ## Moderation and semantic consensus
 
 Only deterministic-format-valid names reach moderation. The serialized input is
-exactly `{"canonical_name":"..."}`. A module-level evaluator receives that one
-bounded payload through a serializable callable instance. The initial
-`functools.partial` design was rejected because the official linter could not
-prove nondeterministic reachability. A mutable module-global design was then
-rejected because cloudpickle did not snapshot its payload. Direct Mode verifies
-that the final bound method preserves exactly one payload without capturing
-contract state, profile data, owner data, or local records. The prompt treats the name as
-untrusted and covers impersonation, deceptive brands/public figures, phishing,
-hate/abuse, misleading official identities, and confusing identity claims.
+exactly `{"canonical_name":"..."}`. Inside `register`, the documented nested
+`leader_fn` and `validator_fn` close over only that bounded payload and do not
+reference contract state. Neither function writes storage, calls another
+contract, or emits a message. The prompt treats the name as untrusted and covers
+impersonation, deceptive brands/public figures, phishing, hate/abuse, misleading
+official identities, and confusing identity claims.
 
 `gl.nondet.exec_prompt(..., response_format="json")` returns a structured mapping.
 The result validator requires an exact three-field dictionary, a real boolean, an
@@ -78,7 +75,11 @@ V2 uses the documented `gl.vm.run_nondet_unsafe` custom validator mechanism.
 Each validator independently reruns the same policy on the canonical candidate.
 It requires exact agreement on `approved` and `category`; reason wording is not a
 settlement field. This is semantic classification consensus, not format-only
-validation.
+validation. The nested callable shape replaces module-level callable classes and
+bound `__call__` methods after the controlled Bradbury A/B documented in
+`BRADBURY_NONDET_AB.md`: the nested probe was accepted while the callable-class
+probe reached no majority. The receipt isolates callable shape as the intended
+runtime difference, but does not prove the exact internal runtime mechanism.
 
 ## Validation and test evidence
 
@@ -91,8 +92,9 @@ Official `genlayer-test` 0.29.2 Direct Mode tests run against the exact pinned
 `py-genlayer` hash. They cover deployment, structured moderation, authorization,
 typed records, transfer, primary cleanup, pagination, 205 registrations, and real
 TreeMap swap-and-pop deletion. `genvm-linter` 0.11.0 passes all three lint checks
-and SDK semantic validation. Studio and Bradbury deployment/manual evidence remain
-PENDING.
+and SDK semantic validation. The currently deployed GNS V2 address is not
+registration-verified. A new deployment is required after this source correction;
+deployment and registration verification remain PENDING.
 
 ## Ownership policy
 

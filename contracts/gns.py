@@ -148,45 +148,6 @@ def moderation_prompt(payload: str) -> str:
     )
 
 
-class moderation_leader:
-    """Serializable module-level callable bound only to one JSON payload."""
-
-    def __init__(self, payload: str):
-        self.payload = payload
-
-    def __call__(self) -> dict:
-        return gl.nondet.exec_prompt(
-            moderation_prompt(self.payload), response_format="json"
-        )
-
-
-class moderation_validator:
-    """Serializable independent semantic validator for the same payload."""
-
-    def __init__(self, payload: str):
-        self.payload = payload
-
-    def __call__(self, leader_result) -> bool:
-        try:
-            if not isinstance(leader_result, gl.vm.Return):
-                return False
-            leader = validate_moderation_result(leader_result.calldata)
-            validator_raw = gl.nondet.exec_prompt(
-                moderation_prompt(self.payload), response_format="json"
-            )
-            validator = validate_moderation_result(validator_raw)
-            return (
-                leader["approved"] == validator["approved"]
-                and leader["category"] == validator["category"]
-            )
-        except (TypeError, ValueError):
-            return False
-
-
-ModerationLeader = moderation_leader
-ModerationValidator = moderation_validator
-
-
 @allow_storage
 @dataclass
 class NameRecord:
@@ -267,12 +228,29 @@ class GenLayerNameServiceV2(gl.Contract):
             raise gl.vm.UserError("duplicate registration")
 
         payload = json.dumps({"canonical_name": canonical}, sort_keys=True, separators=(",", ":"))
-        moderation_leader = ModerationLeader(payload)
-        moderation_validator = ModerationValidator(payload)
-        result_raw = gl.vm.run_nondet_unsafe(
-            moderation_leader.__call__,
-            moderation_validator.__call__,
-        )
+
+        def leader_fn():
+            return gl.nondet.exec_prompt(
+                moderation_prompt(payload), response_format="json"
+            )
+
+        def validator_fn(leader_result):
+            try:
+                if not isinstance(leader_result, gl.vm.Return):
+                    return False
+                leader = validate_moderation_result(leader_result.calldata)
+                validator_raw = gl.nondet.exec_prompt(
+                    moderation_prompt(payload), response_format="json"
+                )
+                validator = validate_moderation_result(validator_raw)
+                return (
+                    leader["approved"] == validator["approved"]
+                    and leader["category"] == validator["category"]
+                )
+            except (TypeError, ValueError):
+                return False
+
+        result_raw = gl.vm.run_nondet_unsafe(leader_fn, validator_fn)
         try:
             result = validate_moderation_result(result_raw)
         except (TypeError, ValueError):

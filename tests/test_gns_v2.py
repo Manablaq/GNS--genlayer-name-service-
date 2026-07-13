@@ -102,19 +102,41 @@ class StructureTests(unittest.TestCase):
         self.assertIn("total_names: u32", SOURCE)
         self.assertIn("TreeMap[str, NameRecord]", SOURCE)
 
-    def test_module_level_nondeterminism(self):
-        classes = {n.name: n for n in TREE.body if isinstance(n, ast.ClassDef)}
-        self.assertIn("moderation_leader", classes)
-        self.assertIn("moderation_validator", classes)
-        self.assertFalse(any(isinstance(n, ast.Lambda) for n in ast.walk(TREE)))
-        contract = next(n for n in TREE.body if isinstance(n, ast.ClassDef)
-                        and n.name == "GenLayerNameServiceV2")
-        self.assertFalse(any(isinstance(n, ast.FunctionDef) for method in contract.body
-                             if isinstance(method, ast.FunctionDef)
-                             for n in ast.iter_child_nodes(method) if isinstance(n, ast.FunctionDef)))
+    def register_node(self):
+        return next(n for n in ast.walk(TREE)
+                    if isinstance(n, ast.FunctionDef) and n.name == "register")
+
+    def test_documented_nested_nondeterminism(self):
+        register = self.register_node()
+        nested = {node.name: node for node in register.body
+                  if isinstance(node, ast.FunctionDef)}
+        self.assertEqual(set(nested), {"leader_fn", "validator_fn"})
+        self.assertFalse(any(isinstance(node, ast.Lambda) for node in ast.walk(register)))
+        for function in nested.values():
+            self.assertFalse(any(isinstance(node, ast.Name) and node.id == "self"
+                                 for node in ast.walk(function)))
+
+        run_call = next(node for node in ast.walk(register)
+                        if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "run_nondet_unsafe")
+        self.assertEqual([ast.unparse(arg) for arg in run_call.args],
+                         ["leader_fn", "validator_fn"])
+        self.assertFalse(any(isinstance(arg, ast.Attribute) and arg.attr == "__call__"
+                             for arg in run_call.args))
+
+    def test_obsolete_callable_constructs_are_absent(self):
+        class_names = {node.name for node in TREE.body if isinstance(node, ast.ClassDef)}
+        self.assertTrue(class_names.isdisjoint({
+            "moderation_leader", "moderation_validator",
+            "ModerationLeader", "ModerationValidator",
+        }))
+        self.assertNotIn("functools.partial", SOURCE)
+        self.assertFalse(any(isinstance(node, ast.Attribute) and node.attr == "__call__"
+                             for node in ast.walk(TREE)))
 
     def test_bounded_payload(self):
-        register = next(n for n in ast.walk(TREE) if isinstance(n, ast.FunctionDef) and n.name == "register")
+        register = self.register_node()
         text = ast.unparse(register)
         self.assertIn("{'canonical_name': canonical}", text)
         for excluded in ("avatar", "bio", "twitter", "github", "website", "owner"):
@@ -124,8 +146,81 @@ class StructureTests(unittest.TestCase):
     def test_semantic_consensus_language_and_comparison(self):
         self.assertNotIn("Validate format only", SOURCE)
         self.assertNotIn("No semantic evaluation", SOURCE)
-        self.assertIn('leader["approved"] == validator["approved"]', SOURCE)
-        self.assertIn('leader["category"] == validator["category"]', SOURCE)
+        register = self.register_node()
+        validator = next(node for node in register.body
+                         if isinstance(node, ast.FunctionDef) and node.name == "validator_fn")
+        comparisons = {ast.unparse(node) for node in ast.walk(validator)
+                       if isinstance(node, ast.Compare)}
+        self.assertIn("leader['approved'] == validator['approved']", comparisons)
+        self.assertIn("leader['category'] == validator['category']", comparisons)
+        consensus_return = next(node for node in ast.walk(validator)
+                                if isinstance(node, ast.Return)
+                                and isinstance(node.value, ast.BoolOp))
+        self.assertNotIn("reason", ast.unparse(consensus_return))
+
+    def test_storage_follows_nondeterminism_and_strict_validation(self):
+        register = self.register_node()
+        run_call = next(node for node in ast.walk(register)
+                        if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "run_nondet_unsafe")
+        strict_call = next(node for node in ast.walk(register)
+                           if isinstance(node, ast.Call)
+                           and isinstance(node.func, ast.Name)
+                           and node.func.id == "validate_moderation_result"
+                           and node.lineno > run_call.lineno)
+        approved_check = next(node for node in ast.walk(register)
+                              if isinstance(node, ast.If)
+                              and "result['approved']" in ast.unparse(node.test))
+        storage_lines = []
+        for node in ast.walk(register):
+            if isinstance(node, (ast.Assign, ast.AugAssign, ast.Delete)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if any("self." in ast.unparse(target) for target in targets):
+                    storage_lines.append(node.lineno)
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "self"
+                    and node.func.attr == "_add_owner_name"):
+                storage_lines.append(node.lineno)
+        self.assertTrue(storage_lines)
+        self.assertGreater(min(storage_lines), run_call.lineno)
+        self.assertGreater(min(storage_lines), strict_call.lineno)
+        self.assertGreater(min(storage_lines), approved_check.lineno)
+
+    def test_public_method_schema_source_is_unchanged(self):
+        contract = next(node for node in TREE.body if isinstance(node, ast.ClassDef)
+                        and node.name == "GenLayerNameServiceV2")
+        methods = []
+        for node in contract.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            kind = next((decorator.attr for decorator in node.decorator_list
+                         if isinstance(decorator, ast.Attribute)
+                         and decorator.attr in {"write", "view"}), None)
+            if kind is not None:
+                methods.append((kind, node.name,
+                                [(arg.arg, ast.unparse(arg.annotation))
+                                 for arg in node.args.args[1:]],
+                                ast.unparse(node.returns)))
+        self.assertEqual(methods, [
+            ("write", "register", [("name", "str"), ("avatar", "str"),
+             ("bio", "str"), ("twitter", "str"), ("github", "str"),
+             ("website", "str")], "None"),
+            ("write", "update_profile", [("name", "str"), ("avatar", "str"),
+             ("bio", "str"), ("twitter", "str"), ("github", "str"),
+             ("website", "str")], "None"),
+            ("write", "set_address", [("name", "str"), ("new_address", "str")], "None"),
+            ("write", "set_primary", [("name", "str")], "None"),
+            ("write", "transfer", [("name", "str"), ("new_owner", "str")], "None"),
+            ("view", "resolve", [("name", "str")], "str"),
+            ("view", "reverse_resolve", [("owner", "str")], "str"),
+            ("view", "get_record", [("name", "str")], "str"),
+            ("view", "is_available", [("name", "str")], "bool"),
+            ("view", "get_names_by_owner", [("owner", "str"), ("offset", "u32"),
+             ("limit", "u32")], "str"),
+            ("view", "get_stats", [], "str"),
+        ])
 
     def test_direct_bounded_owner_index(self):
         self.assertNotIn("records.keys", SOURCE)

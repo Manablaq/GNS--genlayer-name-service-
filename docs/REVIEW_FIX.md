@@ -2,6 +2,22 @@
 
 Deployment and manual evidence remain **PENDING** for every finding.
 
+## Bradbury nondeterministic callable A/B
+
+Two valid-format registration attempts against deployed GNS V2
+`0xE97158b59B7D80F2c911b90906690B3B57722eb8` ended in `LEADER_TIMEOUT`:
+`0x4f04162417040f4ffccf1f27dedff34469365b8c3c5075862c076b42c93579c3` and
+`0xe22ff1237ddec16c24e341e614fc265e93be1c56e1555f7902762ca144788a27`.
+
+A controlled same-prompt, same-input, same-schema, same-validation A/B then
+produced `ACCEPTED` / `AGREE` for nested functions and `UNDETERMINED` /
+`NO_MAJORITY` for module-level callable classes with bound `__call__` methods.
+The full addresses, hashes, execution results, and evidentiary limitation are in
+`BRADBURY_NONDET_AB.md`. The source correction uses nested `leader_fn` and
+`validator_fn` directly inside `register`. The currently deployed GNS V2 address
+is not registration-verified, and a new deployment is required. Deployment and
+registration verification remain **PENDING**.
+
 ## Bradbury schema compatibility
 
 The previous failing `contracts/gns.py` source had SHA-256
@@ -21,14 +37,15 @@ is not a test failure or contract failure.
 | Finding | Rejected behavior and legacy evidence | V2 correction | Automated evidence | Deployment/manual |
 |---|---|---|---|---|
 | Custodial payment design | `contracts/legacy/gns_rejected.py:51`, `:236`, `:255`, `:270`: balance ledger, payable send, withdrawal, and defective `gl.transfer` | Resolver-only; no payment or balance API | `StructureTests.test_no_custody_surface` | PENDING |
-| Unsafe name validation/moderation | `contracts/legacy/gns_rejected.py:23-43`, `:70-121`: silent trim, Unicode `isalnum`, nested evaluator with owner/profile, approval default | Strict ASCII canonicalizer, exact reserved policy, bounded name-only callable, `response_format=json`, strict fail-closed dictionary validator, stable `UserError` boundaries | Unit parser tests and Direct Mode rejection/atomicity tests | PENDING |
+| Unsafe name validation/moderation | `contracts/legacy/gns_rejected.py:23-43`, `:70-121`: silent trim, Unicode `isalnum`, nested evaluator with owner/profile, approval default | Strict ASCII canonicalizer, exact reserved policy, bounded canonical-name-only payload, documented nested nondeterministic functions, `response_format=json`, strict fail-closed dictionary validator, stable `UserError` boundaries | Unit parser and AST/source tests plus Direct Mode rejection/atomicity tests | PENDING |
 | Format-only validator settlement | `contracts/legacy/gns_rejected.py:110-114`: explicitly format-only/no-semantic criteria | Custom validators independently moderate and exact-match approval/category | `test_semantic_consensus_language_and_comparison` | PENDING |
 | Unbounded/incomplete ownership lookup | `contracts/legacy/gns_rejected.py:340-371`: scans global keys and stops at 200 | Maintained owner slots/reverse positions with 50-item pagination | `test_direct_bounded_owner_index`, `OwnerIndexModelTests` | PENDING |
 | Unsafe ownership/address lifecycle | `contracts/legacy/gns_rejected.py:177-233`: string-shape checks and unsafe transfer/primary policy | Typed nonzero `Address`; swap-and-pop transfer; resolution reset; old primary cleared; new primary untouched | `test_typed_storage`, `test_transfer_policy_source_model`, `test_swap_pop_transfer_and_primary` | PENDING |
 
 The offline suite proves deterministic helpers, strict parsing, source structure,
 and an in-memory index model. Official Direct Mode additionally proves deployment,
-structured LLM mocks, callable serialization, typed storage, address behavior,
+structured LLM mocks, typed storage, address behavior,
 authorization, 205-name pagination, TreeMap deletion, and swap-and-pop transfer.
 `genvm-lint check contracts/gns.py` passes all three checks plus SDK validation.
-Studio execution and every Bradbury deployment/manual item remain PENDING.
+The controlled Bradbury A/B is recorded evidence, but the corrected GNS source
+has not been deployed or registration-verified. Those items remain PENDING.
