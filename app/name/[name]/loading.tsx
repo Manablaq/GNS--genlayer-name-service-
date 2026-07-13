@@ -1,0 +1,1 @@
+export default function Loading(){return <section className="route-page"><div className="profile-skeleton"><span className="skeleton avatar large"/><span className="skeleton line title"/><span className="skeleton line"/><span className="skeleton block"/></div></section>}

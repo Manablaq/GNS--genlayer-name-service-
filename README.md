@@ -1,111 +1,79 @@
-# GNS - GenLayer Name Service
+# GNS — GenLayer Name Service
 
-GNS V2 is a non-custodial GenLayer Bradbury testnet registry for `.gen` names, profiles, forward resolution, reverse resolution, and direct wallet payments to resolved addresses.
+GNS is a non-custodial identity resolver for `.gen` names on GenLayer Bradbury Testnet. The application combines human-readable names, public resolver profiles, AI-assisted registration policy, reverse resolution, owner management, and direct wallet payments in a responsive identity-infrastructure interface.
 
-## Links
+## Verified deployment
 
-- Live app: https://dotgenapp.vercel.app
-- GitHub repo: https://github.com/Manablaq/GNS--genlayer-name-service-
-- Active GNS V2 contract: `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`
-- Explorer: https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9
-
-## Network
-
-- Network: GenLayer Bradbury
+- Network: GenLayer Bradbury Testnet
 - Chain ID: `4221`
-- RPC URL: `https://rpc-bradbury.genlayer.com`
-- Explorer URL: `https://explorer-bradbury.genlayer.com`
-- Native token: GEN
+- Active contract: `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`
+- [Contract explorer](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9)
+- [Repository](https://github.com/Manablaq/GNS--genlayer-name-service-)
 
-## Contract
+The deployed interface has 11 public methods: five non-payable writes (`register`, `update_profile`, `set_address`, `set_primary`, `transfer`) and six views (`resolve`, `reverse_resolve`, `get_record`, `is_available`, `get_names_by_owner`, `get_stats`). There are no admin or custodial payment methods.
 
-The contract source is [contracts/gns.py](contracts/gns.py). It is a Python GenLayer Intelligent Contract using `from genlayer import *`, `gl.Contract`, `TreeMap` storage, and `@gl.public.write` / `@gl.public.view` methods.
+## Route map
 
-The deployed schema has exactly 11 public methods: five non-payable writes and six views.
+| Route | Purpose |
+| --- | --- |
+| `/` | Product overview, live availability/resolver search, recent searches, network proof, and registration |
+| `/name/[name]` | Public identity profile, resolver proof, direct-send entry, and wallet-owner controls |
+| `/my-names` | Paginated owner dashboard (12 per page; contract maximum respected at 50) |
+| `/send` | Resolve, review, revalidate, and submit a direct injected-wallet payment |
+| `/api/contract` | Allowlisted, validated server-side contract reads only |
 
-Write methods:
-- `register(name, avatar, bio, twitter, github, website)`
-- `update_profile(name, avatar, bio, twitter, github, website)`
-- `set_address(name, new_address)`
-- `set_primary(name)`
-- `transfer(name, new_owner)`
+## Frontend architecture
 
-Read methods:
-- `resolve(name)`
-- `reverse_resolve(address)`
-- `get_record(name)`
-- `is_available(name)`
-- `get_names_by_owner(owner, offset, limit)`
-- `get_stats()`
+The root layout retains a server-rendered document and uses `next/font` for layout-stable font loading. A deliberately small client provider boundary owns injected-wallet state, the persistent application shell, and the global transaction manager. Contract reads remain allowlisted through the route handler; contract writes happen client-side through the injected provider and `genlayer-js`.
 
-There are no separate owner/admin methods.
+Reusable UI includes status badges, notices, skeletons, empty/error states, copy and address controls, section headers, a focus-managed confirmation dialog, transaction tray, network badge, and restrained viewport reveal/count-up primitives.
 
-## Frontend and API Behavior
+## Non-blocking transaction lifecycle
 
-- Frontend config points to `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9` on Bradbury chain ID `4221`.
-- Reads go through `POST /api/contract`, which calls `genlayer-js` `readContract` against the deployed contract.
-- The API allowlists read methods only and validates name/address arguments. It does not execute arbitrary method names from request bodies.
-- Contract writes happen client-side through the injected browser wallet using `genlayer-js`.
-- GEN payments resolve the name first and then use the injected wallet to send directly to the resolved address; the contract is not a payment destination.
-- No WalletConnect project or connector is configured.
-- The server API does not use a private key or server-side wallet for reads.
+After an injected wallet returns a GenLayer transaction hash, the submitting dialog closes and a namespaced serializable record is stored in `localStorage`. The global provider, mounted above routes, quietly polls structured receipt fields while navigation remains available. Records are keyed by chain, active contract, connected wallet, and hash; other wallet/network records are retained but paused. Storage events synchronize tabs and duplicate hashes are removed only inside the full namespace.
 
-## Transaction Lifecycle
+States are: submitted, processing, confirmation, confirmation delayed, confirmed, execution failed, canceled, undetermined, and unknown/retryable. `ACCEPTED` is not success on its own. A transaction becomes confirmed only after successful receipt execution (`AGREE` plus `FINISHED_WITH_RETURN`) and an action-specific contract read:
 
-The app waits for `TransactionStatus.ACCEPTED` after writes. Accepted transactions are readable from the contract, but Bradbury finalization can still be pending. The UI and docs should not claim a transaction is finalized unless the finalized state is explicitly checked.
+- registration: unavailable and owner equals sender;
+- profile update: normalized stored fields match;
+- address update: resolved address matches;
+- primary update: reverse resolution matches;
+- transfer: owner matches the recipient.
 
-The Bradbury explorer may show accepted or undetermined while the finalization window is still open.
+Retry checks never resubmit a transaction.
 
-## AI Validation
+## Direct non-custodial payments
 
-Registration uses `gl.eq_principle.prompt_non_comparative` to ask validators for a JSON approval decision about the requested name. The app describes this as AI validator policy checking for registration, not ENS compatibility or external identity proof.
+The send route resolves the `.gen` record, displays the full recipient address, validates the GEN amount, requires review, and reads the resolver again before invoking the wallet. GNS never receives or holds these funds. A returned wallet hash is described as submitted, not as GenLayer contract acceptance.
 
-## Local Setup
+## Motion and accessibility policy
+
+Motion uses CSS and IntersectionObserver rather than a global animation dependency. Reveals use small opacity/translate changes once, number count-up starts on visibility, and scroll progress writes a transform inside `requestAnimationFrame`. There is no scroll hijacking, mouse-following effect, WebGL, or permanent particle loop. Under `prefers-reduced-motion: reduce`, reveals are static, smooth scrolling is disabled, animation/transition duration is effectively removed, and scroll progress is hidden.
+
+The shell includes a skip link and semantic landmarks. Controls use visible focus, minimum touch sizing, durable labels, live feedback, non-color status text, safe wrapping, and modal Escape/focus return/trapping behavior. External profile URLs are validated and opened with `noopener noreferrer`.
+
+## Supported responsive targets
+
+The layout is designed and CSS-hardened for `360×800`, `390×844`, `768×1024`, `1024×768`, `1280×800`, and `1440×900`. Below 640px the desktop navigation becomes a safe-area-aware bottom bar; dialogs become scrollable bottom sheets and the transaction tray fits between the header and bottom navigation.
+
+## Local validation
 
 ```bash
 npm install
+python3 -m unittest discover -s tests -v
+/Users/mralbert/.venvs/genvm-lint/bin/genvm-lint check contracts/gns.py
 npm run lint
 npm run build
-```
-
-Run locally:
-
-```bash
-npm run dev
-```
-
-## Testing
-
-Required verification commands:
-
-```bash
-npm run lint
-npm run build
+npm test --if-present
+npx tsc --noEmit
 npm audit
 git diff --check
 ```
 
-Manual checks:
-- Connect a wallet on GenLayer Bradbury.
-- Search a name and confirm availability comes from the API route.
-- Register a name and confirm the UI reports accepted, not finalized.
-- Resolve a registered name and confirm profile data comes from contract reads.
-- Send GEN to a name and confirm the wallet transaction targets the resolved address directly.
+## Manual QA
 
-## Deployment Proof
+Do not submit a real transaction during review. Run the app and inspect all routes at the six target viewports. Test keyboard-only navigation, Escape/focus return in dialogs, reduced motion, no-wallet and wrong-network states, mocked RPC failures, long profile values, address wrapping, storage synchronization, and mocked pending/failed receipts. Confirm there is one transaction poller mounted above routes and no hydration or console warnings.
 
-- Live deployment: https://dotgenapp.vercel.app
-- Deployed contract explorer page: https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9
-- Deployment transaction: `0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565`
-- Registration transaction: `0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76`
-- Deployed source SHA-256: `70c3906b73bae54e6669f79b4d332e72b63fe167902c21f1ae5850c85fec4d9f`
-- Verified registration: `sundayalbert.gen`, owned by and resolving to `0x5bB49021001200fE8156a81c7fcF097e535e7181`
-- Repository: https://github.com/Manablaq/GNS--genlayer-name-service-
+## Limits and claims
 
-## Limitations
-
-- `.gen` names are app-specific records in this contract. They are not ENS names.
-- Ownership proof is limited to the owner/address fields stored by the contract.
-- `get_names_by_owner` is paginated with a maximum page size of 50.
-- Historical addresses are documented in `docs/LEGACY_RETIREMENT.md` and `docs/BRADBURY_NONDET_AB.md`; neither is active.
-- Accepted transactions may still be pending finalization on Bradbury.
+`.gen` names are records in this contract, not ENS names. AI-assisted validator consensus performs registration policy moderation; it is not proof of a person, organization, or external identity. Bradbury receipt and explorer state may remain delayed or undetermined. Historical contract addresses are documentation only and are not active.

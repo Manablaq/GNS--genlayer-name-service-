@@ -1,169 +1,353 @@
-'use client'
-import { useState } from 'react'
-import { useAccount } from 'wagmi'
-import { BRADBURY_EXPLORER_URL, CONTRACT_ADDRESS } from '@/lib/config'
-import { TransactionStatus } from 'genlayer-js/types'
-
-interface Props {
-  name: string
-  onClose: () => void
-  onSuccess: () => void
-}
-
-export function RegisterModal({ name, onClose, onSuccess }: Props) {
-  const { address } = useAccount()
-  const [status, setStatus] = useState<'idle' | 'confirming' | 'pending' | 'done' | 'error'>('idle')
-  const [errMsg, setErrMsg] = useState('')
-  const [txHash, setTxHash] = useState('')
-
-  const displayName = name.endsWith('.gen') ? name : `${name}.gen`
-
-  async function handleRegister() {
-    if (!address) return
-    setStatus('confirming')
-    setErrMsg('')
-
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { useAccount } from "wagmi";
+import {
+  PROFILE_LIMITS,
+  normalizeProfile,
+  safeExternalUrl,
+} from "@/lib/domain";
+import { writeGns } from "@/lib/wallet";
+import { useTransactions } from "./TransactionProvider";
+import { registrationDraftKey } from "@/lib/transactions";
+import { InlineNotice } from "./ui";
+const empty = { avatar: "", bio: "", twitter: "", github: "", website: "" };
+export function RegisterModal({
+  name,
+  onClose,
+}: {
+  name: string;
+  onClose: () => void;
+}) {
+  const { address } = useAccount();
+  const { add } = useTransactions();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const [step, setStep] = useState(0);
+  const [profile, setProfile] = useState(() => {
     try {
-      const { createClient } = await import('genlayer-js')
-      const { testnetBradbury } = await import('genlayer-js/chains')
-      type GenLayerClientConfig = NonNullable<Parameters<typeof createClient>[0]>
-      const provider = (window as Window & { ethereum?: GenLayerClientConfig['provider'] }).ethereum
-
-      const client = createClient({
-        chain: testnetBradbury,
-        account: address as `0x${string}`,
-        provider,
-      })
-
-      // Try to switch network — ignore if Snaps not available (Bradbury may already be added)
-      try {
-        await client.connect('testnetBradbury')
-      } catch (connectErr) {
-        // wallet_getSnaps not supported — continue, user's wallet likely already on Bradbury
-        const message = connectErr instanceof Error ? connectErr.message : String(connectErr)
-        console.log('connect() skipped:', message)
+      return {
+        ...empty,
+        ...JSON.parse(
+          sessionStorage.getItem(registrationDraftKey(name)) || "{}",
+        ),
+      };
+    } catch {
+      return empty;
+    }
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const normalized = normalizeProfile(profile);
+  const display = `${name}.gen`;
+  useEffect(() => {
+    busyRef.current = busy;
+    onCloseRef.current = onClose;
+  }, [busy, onClose]);
+  useEffect(() => {
+    sessionStorage.setItem(registrationDraftKey(name), JSON.stringify(profile));
+  }, [profile, name]);
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const frame = requestAnimationFrame(() => {
+      dialogRef.current?.querySelector<HTMLElement>("button")?.focus();
+    });
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !busyRef.current) onCloseRef.current();
+      if (event.key !== "Tab") return;
+      const controls = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled),input:not(:disabled),textarea:not(:disabled),a[href],[tabindex]:not([tabindex="-1"])',
+      );
+      if (!controls?.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
-
-      // Send the transaction — genlayer-js handles correct encoding
-      const hash = await client.writeContract({
-        address: CONTRACT_ADDRESS,
-        functionName: 'register',
-        args: [name, '', '', '', '', ''],
-        value: BigInt(0),
-      })
-
-      setTxHash(hash)
-      setStatus('pending')
-
-      // Wait for ACCEPTED status
-      await client.waitForTransactionReceipt({
+    };
+    addEventListener("keydown", key);
+    return () => {
+      cancelAnimationFrame(frame);
+      removeEventListener("keydown", key);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
+  const invalidUrl =
+    (normalized.avatar && !safeExternalUrl(normalized.avatar)) ||
+    (normalized.website && !safeExternalUrl(normalized.website));
+  const invalidSocial = [normalized.twitter, normalized.github].some(
+    (v) => v && !/^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$/.test(v),
+  );
+  async function submit() {
+    if (!address) return;
+    setBusy(true);
+    setError("");
+    try {
+      const values = [
+        normalized.avatar,
+        normalized.bio,
+        normalized.twitter,
+        normalized.github,
+        normalized.website,
+      ];
+      const optimisticData = Object.fromEntries(
+        ["avatar", "bio", "twitter", "github", "website"].map((k, i) => [
+          k,
+          values[i],
+        ]),
+      );
+      sessionStorage.setItem(
+        registrationDraftKey(name),
+        JSON.stringify(optimisticData),
+      );
+      const hash = await writeGns(address, "register", [name, ...values]);
+      add({
+        chainId: 4221,
+        wallet: address,
         hash,
-        status: TransactionStatus.ACCEPTED,
-        interval: 4000,
-        retries: 60,
-      })
-
-      setStatus('done')
-      setTimeout(onSuccess, 1500)
+        action: "register",
+        label: `Register ${display}`,
+        expected: { action: "register", name, values: optimisticData },
+        optimisticData,
+      });
+      onClose();
     } catch (e) {
-      setStatus('error')
-      const msg = e instanceof Error ? e.message : String(e)
-      setErrMsg(msg.slice(0, 300))
+      setError(
+        e instanceof Error
+          ? e.message
+          : "The wallet did not submit the transaction.",
+      );
+      setBusy(false);
     }
   }
-
   return (
-    <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content holo-border holo-border-subtle">
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+    <div
+      className="dialog-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="dialog registration-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="register-title"
+      >
+        <div className="dialog-head">
           <div>
-            <p style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 8, fontFamily: 'JetBrains Mono, monospace' }}>
-              Registering
-            </p>
-            <h2 className="name-display" style={{ fontSize: 32 }}>{displayName}</h2>
+            <p className="eyebrow">Claim identity · Step {step + 1} of 3</p>
+            <h2 id="register-title">{display}</h2>
           </div>
-          <button onClick={onClose} className="btn-outline" style={{ padding: '6px 12px', fontSize: 13 }}>✕</button>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Close registration"
+          >
+            ×
+          </button>
         </div>
-
-        {status === 'done' ? (
-          <div style={{ textAlign: 'center', padding: '24px 0' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
-            <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>
-              {displayName} accepted
+        <div className="step-indicator" aria-hidden="true">
+          <i className={step >= 0 ? "active" : ""} />
+          <i className={step >= 1 ? "active" : ""} />
+          <i className={step >= 2 ? "active" : ""} />
+        </div>
+        {step === 0 && (
+          <div className="dialog-body">
+            <h3>Confirm your name</h3>
+            <p>
+              You will own this resolver record from the connected wallet.
+              Registration is moderated for deceptive or abusive identity
+              claims.
             </p>
-            <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>
-              The registration is readable now. Bradbury finalization may still be pending.
-            </p>
-            {txHash && (
-              <a
-                href={`${BRADBURY_EXPLORER_URL}/tx/${txHash}`}
-                target="_blank"
-                rel="noreferrer"
-                style={{ fontSize: 12, color: 'rgba(123,47,255,0.8)', fontFamily: 'JetBrains Mono, monospace' }}
-              >
-                View on GenExplorer →
-              </a>
+            <InlineNotice
+              tone="warning"
+              title="Policy moderation, not identity proof"
+            >
+              AI-assisted consensus evaluates the name against registry policy.
+              Approval does not verify who you are or endorse the profile.
+            </InlineNotice>
+          </div>
+        )}
+        {step === 1 && (
+          <div className="dialog-body form-stack">
+            <h3>Build the profile</h3>
+            <Field
+              label="Bio"
+              value={profile.bio}
+              limit={PROFILE_LIMITS.bio}
+              multiline
+              onChange={(v) => setProfile({ ...profile, bio: v })}
+              hint="A concise public description."
+            />
+            <Field
+              label="Avatar URL"
+              value={profile.avatar}
+              limit={PROFILE_LIMITS.avatar}
+              onChange={(v) => setProfile({ ...profile, avatar: v })}
+              hint="https://example.com/avatar.png"
+            />
+            <div className="field-grid">
+              <Field
+                label="X username"
+                value={profile.twitter}
+                limit={PROFILE_LIMITS.twitter}
+                onChange={(v) => setProfile({ ...profile, twitter: v })}
+                hint="Example: genlayer"
+              />
+              <Field
+                label="GitHub username"
+                value={profile.github}
+                limit={PROFILE_LIMITS.github}
+                onChange={(v) => setProfile({ ...profile, github: v })}
+                hint="Example: genlayerlabs"
+              />
+            </div>
+            <Field
+              label="Website"
+              value={profile.website}
+              limit={PROFILE_LIMITS.website}
+              onChange={(v) => setProfile({ ...profile, website: v })}
+              hint="https://example.com"
+            />
+            {invalidUrl && (
+              <p className="field-error">
+                Avatar and website must be valid HTTP(S) URLs.
+              </p>
+            )}
+            {invalidSocial && (
+              <p className="field-error">
+                Social usernames may use letters, numbers, underscores, and
+                hyphens.
+              </p>
             )}
           </div>
-        ) : (
-          <>
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '16px 18px', marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>Name</span>
-                <span className="font-mono" style={{ fontSize: 13 }}>{displayName}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>Owner</span>
-                <span className="font-mono" style={{ fontSize: 13 }}>
-                  {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '—'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, color: 'var(--muted)' }}>Network</span>
-                <span style={{ fontSize: 13, color: 'var(--success)' }}>GenLayer Bradbury</span>
-              </div>
-            </div>
-
-            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.6 }}>
-              AI validators will verify the name is appropriate. You can update your profile after registration.
-            </p>
-
-            {status === 'pending' && txHash && (
-              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(0,232,121,0.06)', border: '1px solid rgba(0,232,121,0.2)', borderRadius: 10, fontSize: 12 }}>
-                <p style={{ color: 'var(--success)', marginBottom: 4 }}>Transaction submitted — waiting for accepted state...</p>
-                <p style={{ color: 'var(--muted)', marginBottom: 6 }}>After acceptance, the name can be read while finalization remains pending.</p>
-                <a href={`${BRADBURY_EXPLORER_URL}/tx/${txHash}`} target="_blank" rel="noreferrer" style={{ color: 'rgba(255,255,255,0.4)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>
-                  {txHash.slice(0, 20)}...
-                </a>
-              </div>
-            )}
-
-            {errMsg && (
-              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(255,59,59,0.1)', border: '1px solid rgba(255,59,59,0.3)', borderRadius: 10, fontSize: 13, color: 'var(--error)', wordBreak: 'break-word' }}>
-                {errMsg}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn-outline" onClick={onClose} style={{ flex: 1, padding: '13px' }} disabled={status === 'pending'}>
-                Cancel
-              </button>
-              <button
-                className="btn-holo"
-                onClick={handleRegister}
-                disabled={status === 'confirming' || status === 'pending'}
-                style={{ flex: 2, padding: '13px', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-              >
-                {status === 'confirming' && <><div className="spinner" />Confirm in wallet...</>}
-                {status === 'pending' && <><div className="spinner" />Processing...</>}
-                {status === 'idle' && `Register ${displayName}`}
-                {status === 'error' && 'Try Again'}
-              </button>
-            </div>
-          </>
         )}
+        {step === 2 && (
+          <div className="dialog-body">
+            <h3>Review before signing</h3>
+            <dl className="review-list">
+              <div>
+                <dt>Name</dt>
+                <dd>{display}</dd>
+              </div>
+              <div>
+                <dt>Owner / initial resolver</dt>
+                <dd className="break-anywhere">{address}</dd>
+              </div>
+              <div>
+                <dt>Profile</dt>
+                <dd>
+                  {normalized.bio ||
+                  normalized.avatar ||
+                  normalized.twitter ||
+                  normalized.github ||
+                  normalized.website
+                    ? "Included"
+                    : "Empty — editable later"}
+                </dd>
+              </div>
+              <div>
+                <dt>Network</dt>
+                <dd>GenLayer Bradbury · 4221</dd>
+              </div>
+            </dl>
+            <p className="muted">
+              After wallet submission, this dialog closes. Consensus and the
+              resulting owner record are checked globally while you continue
+              using the app.
+            </p>
+            {error && (
+              <InlineNotice tone="error" title="Submission not completed">
+                {error}
+              </InlineNotice>
+            )}
+          </div>
+        )}
+        <div className="dialog-actions">
+          {step > 0 ? (
+            <button
+              className="button ghost"
+              onClick={() => setStep(step - 1)}
+              disabled={busy}
+            >
+              Back
+            </button>
+          ) : (
+            <button className="button ghost" onClick={onClose}>
+              Cancel
+            </button>
+          )}
+          {step < 2 ? (
+            <button
+              className="button primary"
+              onClick={() => setStep(step + 1)}
+              disabled={step === 1 && !!(invalidUrl || invalidSocial)}
+            >
+              Continue
+            </button>
+          ) : (
+            <button
+              className="button primary"
+              onClick={submit}
+              disabled={busy || !address}
+            >
+              {busy ? "Confirm in wallet…" : "Sign registration"}
+            </button>
+          )}
+        </div>
       </div>
     </div>
-  )
+  );
+}
+function Field({
+  label,
+  value,
+  limit,
+  onChange,
+  hint,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  limit: number;
+  onChange: (v: string) => void;
+  hint: string;
+  multiline?: boolean;
+}) {
+  const id = label.toLowerCase().replace(/\s/g, "-");
+  return (
+    <label className="field" htmlFor={id}>
+      <span>
+        {label}
+        <small>
+          {value.length}/{limit}
+        </small>
+      </span>
+      {multiline ? (
+        <textarea
+          id={id}
+          value={value}
+          maxLength={limit}
+          onChange={(e) => onChange(e.target.value)}
+          rows={4}
+        />
+      ) : (
+        <input
+          id={id}
+          value={value}
+          maxLength={limit}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+      <em>{hint}</em>
+    </label>
+  );
 }

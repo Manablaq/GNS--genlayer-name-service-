@@ -1,178 +1,292 @@
-'use client'
-import { useState } from 'react'
-import { useAccount, useSendTransaction } from 'wagmi'
-import { parseEther } from 'viem'
-import { BottomNav } from '@/components/BottomNav'
-import { getExplorerTxUrl, getRecord, normalizeName, shortAddress } from '@/lib/genlayer'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
-
+"use client";
+import { FormEvent, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAccount, useSendTransaction } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { formatEther, parseEther } from "viem";
+import { getRecord, getExplorerTxUrl } from "@/lib/genlayer";
+import { resolvedAddressChanged, validateName } from "@/lib/domain";
+import {
+  AddressDisplay,
+  ConfirmDialog,
+  CopyButton,
+  ErrorState,
+  ExternalLink,
+  InlineNotice,
+  NameBadge,
+  StatusBadge,
+} from "@/components/ui";
+interface ResolverRecord {
+  found?: boolean;
+  name: string;
+  resolved: `0x${string}`;
+  bio?: string;
+}
 export default function SendPage() {
-  const { address, isConnected } = useAccount()
-  const { sendTransactionAsync } = useSendTransaction()
-  const [nameInput, setNameInput] = useState('')
-  const [amount, setAmount] = useState('')
-  const [resolvedAddr, setResolvedAddr] = useState('')
-  const [lookupState, setLookupState] = useState<'idle' | 'searching' | 'found' | 'not-found'>('idle')
-  const [sendStatus, setSendStatus] = useState<'idle' | 'submitted' | 'accepted' | 'error'>('idle')
-  const [txHash, setTxHash] = useState('')
-  const [errMsg, setErrMsg] = useState('')
-
-  async function handleLookup() {
-    const name = normalizeName(nameInput)
-    if (!name || name.length < 3) return
-    setLookupState('searching')
-    setResolvedAddr('')
+  const query = useSearchParams();
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const { sendTransactionAsync } = useSendTransaction();
+  const [name, setName] = useState(() => query.get("name") || "");
+  const [record, setRecord] = useState<ResolverRecord | null>(null);
+  const [state, setState] = useState<
+    "idle" | "loading" | "found" | "missing" | "error"
+  >("idle");
+  const [amount, setAmount] = useState("");
+  const [review, setReview] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [changed, setChanged] = useState("");
+  const [ack, setAck] = useState(false);
+  const [hash, setHash] = useState("");
+  const validation = validateName(name);
+  let wei: bigint | null = null;
+  try {
+    wei = parseEther(amount);
+  } catch {}
+  const validAmount = wei !== null && wei > 0n;
+  async function resolveName(e?: FormEvent) {
+    e?.preventDefault();
+    if (!validation.valid) return;
+    setState("loading");
+    setError("");
     try {
-      const record = await getRecord(name)
-      const found = record?.found === true || record?.found === 'true'
-      if (found && record?.resolved) {
-        setResolvedAddr(record.resolved)
-        setLookupState('found')
-      } else {
-        setLookupState('not-found')
-      }
-    } catch { setLookupState('not-found') }
-  }
-
-  async function handleSend() {
-    if (!address || !resolvedAddr || !amount) return
-    setSendStatus('submitted')
-    setErrMsg('')
-
-    try {
-      const hash = await sendTransactionAsync({
-        to: resolvedAddr as `0x${string}`,
-        value: parseEther(amount),
-      })
-      setTxHash(hash)
-      setSendStatus('accepted')
+      const value = (await getRecord(validation.canonical)) as ResolverRecord;
+      if (value?.found && value?.resolved) {
+        setRecord(value);
+        setState("found");
+      } else setState("missing");
     } catch (e) {
-      setSendStatus('error')
-      setErrMsg((e instanceof Error ? e.message : String(e)).slice(0, 200))
+      setError(e instanceof Error ? e.message : "RPC read failed.");
+      setState("error");
     }
   }
-
-  if (!isConnected) return (
-    <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 20 }}>
-      <p className="font-display" style={{ fontSize: 22, fontWeight: 700 }}>Connect your wallet</p>
-      <ConnectButton />
-      <BottomNav />
-    </main>
-  )
-
-  return (
-    <main style={{ minHeight: '100vh', padding: '60px 20px 120px', maxWidth: 480, margin: '0 auto' }}>
-      <div className="fade-up" style={{ marginBottom: 32 }}>
-        <p style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--muted)', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 }}>Transfer</p>
-        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>Send GEN</h1>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 8 }}>
-          Resolve a <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>.gen</span> name and send GEN directly to its resolved address
-        </p>
-      </div>
-
-      {sendStatus === 'accepted' ? (
-        <div className="card fade-up" style={{ padding: '40px 24px', textAlign: 'center' }}>
-          <p className="font-display" style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Accepted</p>
-          <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 4 }}>
-            {amount} GEN → <span className="name-display" style={{ fontSize: 14 }}>{normalizeName(nameInput)}.gen</span>
+  async function send() {
+    if (!record || !validation.valid || !wei) return;
+    setBusy(true);
+    setError("");
+    try {
+      const latest = (await getRecord(validation.canonical)) as ResolverRecord;
+      if (!latest?.found || !latest.resolved)
+        throw new Error(
+          "The name no longer resolves. No transfer was submitted.",
+        );
+      if (resolvedAddressChanged(record.resolved, latest.resolved)) {
+        setChanged(latest.resolved);
+        setRecord(latest);
+        setAck(false);
+        setBusy(false);
+        return;
+      }
+      const tx = await sendTransactionAsync({
+        to: latest.resolved,
+        value: wei,
+      });
+      setHash(tx);
+      setReview(false);
+      setBusy(false);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "The wallet did not submit the transfer.",
+      );
+      setBusy(false);
+    }
+  }
+  if (hash && record)
+    return (
+      <section className="route-page narrow">
+        <header className="page-heading">
+          <p className="eyebrow">Wallet transfer submitted</p>
+          <h1>Sent directly.</h1>
+          <p>GNS did not receive or custody this payment.</p>
+        </header>
+        <div className="success-panel">
+          <StatusBadge tone="success">Wallet submitted</StatusBadge>
+          <h2>{amount} GEN</h2>
+          <p>
+            to <NameBadge name={validation.canonical} />
           </p>
-          <p style={{ color: 'var(--muted)', fontSize: 12, fontFamily: 'JetBrains Mono, monospace', marginBottom: 20 }}>
-            Submitted directly to {shortAddress(resolvedAddr)}. GNS V2 does not receive or hold the funds.
-          </p>
-          {txHash && (
-            <a href={getExplorerTxUrl(txHash)} target="_blank" rel="noreferrer"
-              style={{ fontSize: 12, color: 'rgba(123,47,255,0.8)', display: 'block', marginBottom: 20 }}>
-              View on explorer →
-            </a>
-          )}
-          <button className="btn-holo" style={{ padding: '12px 24px' }}
-            onClick={() => { setSendStatus('idle'); setResolvedAddr(''); setNameInput(''); setAmount(''); setTxHash('') }}>
-            Send again
+          <AddressDisplay address={record.resolved} />
+          <ExternalLink
+            className="button secondary"
+            href={getExplorerTxUrl(hash)}
+          >
+            View wallet transaction ↗
+          </ExternalLink>
+          <button
+            className="button ghost"
+            onClick={() => {
+              setHash("");
+              setAmount("");
+              setRecord(null);
+              setState("idle");
+            }}
+          >
+            Send another
           </button>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Name input */}
-          <div className="card fade-up" style={{ padding: '20px' }}>
-            <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 10, fontWeight: 500 }}>
-              To (name or address)
-            </label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                className="gns-input"
-                style={{ padding: '11px 14px', fontSize: 14 }}
-                placeholder="albert.gen"
-                value={nameInput}
-                onChange={e => { setNameInput(e.target.value); setLookupState('idle'); setResolvedAddr('') }}
-                onKeyDown={e => e.key === 'Enter' && handleLookup()}
-              />
-              <button
-                className="btn-outline"
-                style={{ padding: '11px 16px', fontSize: 13, flexShrink: 0 }}
-                onClick={handleLookup}
-                disabled={!nameInput || nameInput.length < 3 || lookupState === 'searching'}
-              >
-                {lookupState === 'searching'
-                  ? <div className="spinner" style={{ width: 14, height: 14 }} />
-                  : 'Resolve'}
-              </button>
-            </div>
-
-            {lookupState === 'found' && resolvedAddr && (
-              <div className="fade-up" style={{ marginTop: 14, padding: '12px 14px', background: 'rgba(0,232,121,0.06)', border: '1px solid rgba(0,232,121,0.2)', borderRadius: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <div className="pulse-dot" style={{ background: 'var(--success)' }} />
-                  <span className="name-display" style={{ fontSize: 15 }}>{normalizeName(nameInput)}.gen</span>
-                  <span className="tag tag-success">Resolved</span>
-                </div>
-                <p style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-                  → {resolvedAddr}
-                </p>
-              </div>
-            )}
-            {lookupState === 'not-found' && (
-              <p style={{ marginTop: 12, fontSize: 13, color: 'var(--error)' }}>Name not found. Check spelling or register it.</p>
-            )}
+      </section>
+    );
+  return (
+    <section className="route-page narrow">
+      <header className="page-heading">
+        <p className="eyebrow">Direct wallet payment</p>
+        <h1>Resolve. Review. Send.</h1>
+        <p>
+          Enter a .gen identity, verify its current destination, then send GEN
+          directly from your injected wallet.
+        </p>
+      </header>
+      <ol className="flow-steps">
+        <li className={state !== "idle" ? "done" : "active"}>
+          <span>1</span>Resolve
+        </li>
+        <li className={record ? "active" : ""}>
+          <span>2</span>Review
+        </li>
+        <li>
+          <span>3</span>Wallet
+        </li>
+      </ol>
+      <form className="surface form-stack" onSubmit={resolveName}>
+        <label className="field" htmlFor="recipient">
+          <span>Recipient .gen name</span>
+          <div className="suffix-input">
+            <input
+              id="recipient"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                setState("idle");
+                setRecord(null);
+              }}
+              placeholder="identity"
+            />
+            <b>.gen</b>
           </div>
-
-          {/* Amount */}
-          {lookupState === 'found' && (
-            <div className="card fade-up" style={{ padding: '20px' }}>
-              <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 10, fontWeight: 500 }}>
-                Amount (GEN)
-              </label>
-              <input
-                className="gns-input"
-                style={{ padding: '11px 14px', fontSize: 18 }}
-                placeholder="0.01"
-                type="number"
-                min="0"
-                step="0.0001"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-              />
+          {!validation.valid && name && (
+            <em className="field-error">{validation.reason}</em>
+          )}
+        </label>
+        <button
+          className="button secondary"
+          disabled={!validation.valid || state === "loading"}
+        >
+          {state === "loading" ? "Reading resolver…" : "Resolve name"}
+        </button>
+      </form>
+      {state === "error" && (
+        <ErrorState
+          title="Resolver unavailable"
+          message={error}
+          retry={() => resolveName()}
+        />
+      )}{" "}
+      {state === "missing" && (
+        <InlineNotice tone="error" title="Name not registered">
+          No resolver record was returned. Check the spelling before continuing.
+        </InlineNotice>
+      )}
+      {record && (
+        <div className="surface recipient-card">
+          <div className="recipient-head">
+            <div className="avatar-initial">{record.name[0].toUpperCase()}</div>
+            <div>
+              <NameBadge name={record.name} />
+              <p>{record.bio || "Public GNS resolver profile"}</p>
             </div>
-          )}
-
-          {errMsg && (
-            <p style={{ fontSize: 13, color: 'var(--error)', wordBreak: 'break-word' }}>{errMsg}</p>
-          )}
-
-          {lookupState === 'found' && amount && (
+            <StatusBadge tone="success">Resolved now</StatusBadge>
+          </div>
+          <div className="address-row">
+            <AddressDisplay address={record.resolved} />
+            <CopyButton value={record.resolved} label="Copy resolved address" />
+          </div>
+          <InlineNotice>
+            Destination is read again immediately before wallet submission.
+          </InlineNotice>
+          <label className="field" htmlFor="amount">
+            <span>Amount in GEN</span>
+            <input
+              id="amount"
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.01"
+            />
+            {amount && !validAmount && (
+              <em className="field-error">Enter a positive decimal amount.</em>
+            )}
+          </label>
+          {!isConnected ? (
+            <button className="button primary" onClick={openConnectModal}>
+              Connect injected wallet
+            </button>
+          ) : (
             <button
-              className="btn-holo fade-up"
-              style={{ padding: '15px', fontSize: 16, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-              onClick={handleSend}
-              disabled={sendStatus === 'submitted'}
+              className="button primary"
+              disabled={!validAmount}
+              onClick={() => {
+                setChanged("");
+                setAck(false);
+                setReview(true);
+              }}
             >
-              {sendStatus === 'submitted'
-                ? <><div className="spinner" />Confirm in wallet...</>
-                : `Send ${amount} GEN to ${normalizeName(nameInput)}.gen`}
+              Review direct send
             </button>
           )}
         </div>
       )}
-      <BottomNav />
-    </main>
-  )
+      <ConfirmDialog
+        open={review}
+        title="Review direct wallet send"
+        confirmLabel="Open wallet confirmation"
+        busy={busy}
+        onClose={() => !busy && setReview(false)}
+        onConfirm={send}
+      >
+        <dl className="review-list">
+          <div>
+            <dt>Recipient</dt>
+            <dd>{validation.display}</dd>
+          </div>
+          <div>
+            <dt>Resolved address</dt>
+            <dd className="break-anywhere">{record?.resolved}</dd>
+          </div>
+          <div>
+            <dt>Amount</dt>
+            <dd>{wei ? formatEther(wei) : "0"} GEN</dd>
+          </div>
+          <div>
+            <dt>Path</dt>
+            <dd>Your wallet → recipient</dd>
+          </div>
+        </dl>
+        {changed && (
+          <InlineNotice tone="warning" title="Resolved address changed">
+            The current address is now{" "}
+            <span className="break-anywhere">{changed}</span>. Review it
+            carefully.
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={ack}
+                onChange={(e) => setAck(e.target.checked)}
+              />
+              I acknowledge this new destination.
+            </label>
+          </InlineNotice>
+        )}
+        {error && <InlineNotice tone="error">{error}</InlineNotice>}
+        {changed && !ack && (
+          <p className="field-error">
+            Acknowledge the changed destination, then confirm again.
+          </p>
+        )}
+      </ConfirmDialog>
+    </section>
+  );
 }

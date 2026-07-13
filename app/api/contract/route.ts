@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CONTRACT_ADDRESS } from '@/lib/config'
 
-const NAME_RE = /^[a-z0-9-]{3,32}(?:\.gen)?$/i
+const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.gen)?$/i
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 
 const READ_METHODS = {
@@ -89,6 +89,6 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Contract read failed.'
     console.error('[GNS API]', message)
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Bradbury contract read failed. Retry shortly.' }, { status: 502 })
   }
 }

@@ -5,6 +5,8 @@ import { injected } from 'wagmi/connectors'
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
 import '@rainbow-me/rainbowkit/styles.css'
 import { BRADBURY_CHAIN } from '@/lib/config'
+import { TransactionProvider } from '@/components/TransactionProvider'
+import { AppShell } from '@/components/AppShell'
 
 const config = createConfig({
   chains: [BRADBURY_CHAIN],
@@ -27,7 +29,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             fontStack: 'system',
           })}
         >
-          {children}
+          <TransactionProvider><AppShell>{children}</AppShell></TransactionProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
