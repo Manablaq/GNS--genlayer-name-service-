@@ -1,264 +1,402 @@
-'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAccount } from 'wagmi'
-import { BottomNav } from '@/components/BottomNav'
-import { RegisterModal } from '@/components/RegisterModal'
-import { checkAvailability, normalizeName, getStats } from '@/lib/genlayer'
-import { usePolling } from '@/hooks/usePolling'
-
-type CheckState = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
-
+"use client";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAccount } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
+import { checkAvailability, getRecord, getStats } from "@/lib/genlayer";
+import { validateName } from "@/lib/domain";
+import { BRADBURY_EXPLORER_URL, CONTRACT_ADDRESS } from "@/lib/config";
+import { RegisterModal } from "@/components/RegisterModal";
+import { AnimatedNumber, Reveal } from "@/components/Motion";
+import {
+  ExternalLink,
+  InlineNotice,
+  NameBadge,
+  SectionHeader,
+  Skeleton,
+  StatusBadge,
+} from "@/components/ui";
+type SearchState =
+  | "idle"
+  | "loading"
+  | "available"
+  | "registered"
+  | "invalid"
+  | "reserved"
+  | "error";
+interface SearchRecord {
+  found?: boolean;
+  resolved?: string;
+}
+const RECENT = "gns:recent-searches:v1";
+function loadRecent() {
+  if (typeof window === "undefined") return [];
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RECENT) || "[]");
+    return Array.isArray(v)
+      ? v
+          .filter(
+            (x): x is string => typeof x === "string" && validateName(x).valid,
+          )
+          .slice(0, 5)
+      : [];
+  } catch {
+    return [];
+  }
+}
 export default function HomePage() {
-  const router = useRouter()
-  const { isConnected } = useAccount()
-  const [input, setInput] = useState('')
-  const [checkState, setCheckState] = useState<CheckState>('idle')
-  const [showRegister, setShowRegister] = useState(false)
-  const { data: stats } = usePolling(getStats, 5000)
-  const debounceRef = useRef<NodeJS.Timeout | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animRef = useRef<number | null>(null)
-
-  // Canvas background animation
+  const router = useRouter();
+  const query = useSearchParams();
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+  const [input, setInput] = useState(() => query.get("q") || "");
+  const [state, setState] = useState<SearchState>("idle");
+  const [record, setRecord] = useState<SearchRecord | null>(null);
+  const [error, setError] = useState("");
+  const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [register, setRegister] = useState(false);
+  const [stats, setStats] = useState<number | null>(null);
+  const request = useRef(0);
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const activeCanvas = canvas
-    const ctx = canvas.getContext('2d')!
-    let width = 0, height = 0
-
-    function resize() {
-      width = activeCanvas.width = window.innerWidth
-      height = activeCanvas.height = window.innerHeight
-    }
-    resize()
-    window.addEventListener('resize', resize)
-
-    let t = 0
-    const dots: { x: number; y: number; r: number; phase: number; speed: number }[] = []
-    for (let i = 0; i < 60; i++) {
-      dots.push({
-        x: Math.random() * 1200,
-        y: Math.random() * 800,
-        r: Math.random() * 1.5 + 0.5,
-        phase: Math.random() * Math.PI * 2,
-        speed: Math.random() * 0.008 + 0.004,
-      })
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, width, height)
-
-      // Grid
-      ctx.strokeStyle = 'rgba(123,47,255,0.04)'
-      ctx.lineWidth = 1
-      const gridSize = 60
-      for (let x = 0; x < width; x += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke()
-      }
-      for (let y = 0; y < height; y += gridSize) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke()
-      }
-
-      // Floating dots
-      t += 0.01
-      dots.forEach(d => {
-        const alpha = (Math.sin(t * d.speed * 10 + d.phase) + 1) / 2 * 0.4 + 0.05
-        ctx.beginPath()
-        ctx.arc(
-          (d.x + Math.sin(t * d.speed + d.phase) * 30) % width,
-          (d.y + Math.cos(t * d.speed * 0.7 + d.phase) * 20) % height,
-          d.r,
-          0, Math.PI * 2
-        )
-        ctx.fillStyle = `hsla(${270 + Math.sin(d.phase) * 40},80%,70%,${alpha})`
-        ctx.fill()
-      })
-
-      animRef.current = requestAnimationFrame(draw)
-    }
-    draw()
-    return () => {
-      window.removeEventListener('resize', resize)
-      if (animRef.current !== null) cancelAnimationFrame(animRef.current)
-    }
-  }, [])
-
-  // Debounced name check
-  const checkName = useCallback((val: string) => {
-    const name = normalizeName(val)
-    if (!name || name.length < 3) {
-      setCheckState(name.length > 0 && name.length < 3 ? 'invalid' : 'idle')
-      return
-    }
-    setCheckState('checking')
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const result = await checkAvailability(name)
-        if (result?.available === false) {
-          setCheckState('taken')
-        } else if (result?.available === true) {
-          setCheckState('available')
-        } else if (result?.reason === 'Invalid format.') {
-          setCheckState('invalid')
-        } else {
-          setCheckState('idle')
+    getStats()
+      .then((v) => setStats(Number(v?.total_names)))
+      .catch(() => setStats(null));
+  }, []);
+  useEffect(() => {
+    const validation = validateName(input);
+    const id = ++request.current;
+    const timer = setTimeout(
+      async () => {
+        if (!input) {
+          setState("idle");
+          return;
         }
-      } catch {
-        setCheckState('idle')
-      }
-    }, 600)
-  }, [])
-
-  function handleInput(val: string) {
-    setInput(val)
-    setCheckState('idle')
-    checkName(val)
+        if (!validation.valid) {
+          setState(validation.reserved ? "reserved" : "invalid");
+          setError(validation.reason);
+          return;
+        }
+        setState("loading");
+        try {
+          const available = await checkAvailability(validation.canonical);
+          if (id !== request.current) return;
+          if (available === true) {
+            setRecord(null);
+            setState("available");
+          } else {
+            const value = (await getRecord(
+              validation.canonical,
+            )) as SearchRecord;
+            if (id !== request.current) return;
+            setRecord(value);
+            setState(value?.found ? "registered" : "error");
+          }
+        } catch (e) {
+          if (id === request.current) {
+            setError(
+              e instanceof Error ? e.message : "Bradbury RPC unavailable.",
+            );
+            setState("error");
+          }
+        }
+      },
+      validation.valid ? 420 : 0,
+    );
+    return () => clearTimeout(timer);
+  }, [input]);
+  const validation = validateName(input);
+  function remember() {
+    if (!validation.valid) return;
+    const next = [
+      validation.canonical,
+      ...recent.filter((n) => n !== validation.canonical),
+    ].slice(0, 5);
+    setRecent(next);
+    localStorage.setItem(RECENT, JSON.stringify(next));
   }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      const name = normalizeName(input)
-      if (checkState === 'taken') router.push(`/name/${name}`)
-      if (checkState === 'available') {
-        if (!isConnected) return
-        setShowRegister(true)
-      }
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    remember();
+    if (!validation.valid) return;
+    if (state === "registered") router.push(`/name/${validation.canonical}`);
+    if (state === "available") {
+      if (isConnected) setRegister(true);
+      else openConnectModal?.();
     }
   }
-
-  const normalized = normalizeName(input)
-  const displayName = normalized ? `${normalized}.gen` : ''
-
   return (
-    <main style={{ minHeight: '100vh', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 20px 120px' }}>
-      {/* Canvas bg */}
-      <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }} />
-
-      {/* Content */}
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 560 }}>
-        {/* Logo */}
-        <div className="fade-up" style={{ textAlign: 'center', marginBottom: 48 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: 10,
-              background: 'linear-gradient(135deg, #7B2FFF, #FF2FA0)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 20, fontWeight: 800, color: 'white', fontFamily: 'Syne, sans-serif'
-            }}>G</div>
-            <span className="font-display" style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em' }}>GNS</span>
+    <>
+      <section className="hero">
+        <div className="identity-grid" aria-hidden="true" />
+        <div className="hero-copy">
+          <Reveal>
+            <p className="eyebrow">
+              <span className="live-dot" />
+              Live on GenLayer Bradbury
+            </p>
+            <h1>
+              Own the name.
+              <br />
+              <span>Resolve the identity.</span>
+            </h1>
+            <p className="hero-lede">
+              Claim a human-readable <code>.gen</code> identity, attach a public
+              profile, and receive direct wallet payments without giving custody
+              to GNS.
+            </p>
+          </Reveal>
+          <Reveal delay={80}>
+            <form className="resolver-search" onSubmit={submit}>
+              <label htmlFor="name-search">Find a .gen identity</label>
+              <div className="search-control">
+                <input
+                  id="name-search"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="yourname"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <span>.gen</span>
+                <button
+                  className="button primary"
+                  disabled={
+                    state === "loading" ||
+                    state === "idle" ||
+                    state === "invalid" ||
+                    state === "reserved"
+                  }
+                >
+                  {state === "loading"
+                    ? "Resolving…"
+                    : state === "registered"
+                      ? "View identity"
+                      : state === "available"
+                        ? isConnected
+                          ? "Claim name"
+                          : "Connect to claim"
+                        : "Search"}
+                </button>
+              </div>
+              <div className="search-feedback" aria-live="polite">
+                {state === "loading" && (
+                  <>
+                    <Skeleton className="line" />
+                    <span>Reading the active resolver…</span>
+                  </>
+                )}
+                {state === "available" && (
+                  <>
+                    <StatusBadge tone="success">Available</StatusBadge>
+                    <strong>{validation.display}</strong>
+                    <span>Ready for registration.</span>
+                  </>
+                )}
+                {state === "registered" && (
+                  <>
+                    <StatusBadge tone="accent">Registered</StatusBadge>
+                    <strong>{validation.display}</strong>
+                    <span>Resolves to {record?.resolved?.slice(0, 10)}…</span>
+                  </>
+                )}
+                {(state === "invalid" || state === "reserved") && (
+                  <>
+                    <StatusBadge tone="warning">
+                      {state === "reserved" ? "Reserved" : "Invalid"}
+                    </StatusBadge>
+                    <span>{error}</span>
+                  </>
+                )}
+                {state === "error" && (
+                  <>
+                    <StatusBadge tone="error">RPC unavailable</StatusBadge>
+                    <span>
+                      Could not verify on-chain state. Retry before acting.
+                    </span>
+                  </>
+                )}
+              </div>
+            </form>
+            {recent.length > 0 && (
+              <div className="recent-searches">
+                <span>Recent</span>
+                {recent.map((n) => (
+                  <button key={n} onClick={() => setInput(n)}>
+                    {n}.gen
+                  </button>
+                ))}
+                <button
+                  className="clear"
+                  onClick={() => {
+                    localStorage.removeItem(RECENT);
+                    setRecent([]);
+                  }}
+                >
+                  Clear history
+                </button>
+              </div>
+            )}
+          </Reveal>
+          <div className="trust-row">
+            <span>✓ Verified active contract</span>
+            <span>◇ Resolver-only</span>
+            <span>↗ Direct non-custodial send</span>
           </div>
-          <p className="font-display" style={{ fontSize: 'clamp(32px, 7vw, 52px)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.03em', marginBottom: 12 }}>
-            Your name.<br />
-            <span className="name-display" style={{ fontSize: 'inherit' }}>On-chain.</span>
-          </p>
-          <p style={{ color: 'var(--muted)', fontSize: 15, lineHeight: 1.6 }}>
-            Register a <span style={{ color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>.gen</span> name. Send and receive GEN tokens with it.
-          </p>
         </div>
-
-        {/* Search bar */}
-        <div className="fade-up-d1 holo-border" style={{ borderRadius: 16 }}>
-          <div style={{ background: '#0D0D0D', borderRadius: 15, padding: '6px 6px 6px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ color: 'var(--muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: 15, flexShrink: 0 }}>⌨</span>
-            <input
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                color: 'var(--text)', fontFamily: 'JetBrains Mono, monospace', fontSize: 18,
-                fontWeight: 500, letterSpacing: '0.01em'
-              }}
-              placeholder="search name..."
-              value={input}
-              onChange={e => handleInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              autoFocus
-              spellCheck={false}
-              autoComplete="off"
-            />
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 15, color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>.gen</span>
-            <button
-              className="btn-holo"
-              style={{ padding: '10px 20px', fontSize: 14, borderRadius: 10, flexShrink: 0 }}
-              onClick={() => {
-                if (checkState === 'taken') router.push(`/name/${normalized}`)
-                if (checkState === 'available' && isConnected) setShowRegister(true)
-              }}
-              disabled={checkState === 'idle' || checkState === 'checking' || checkState === 'invalid'}
-            >
-              {checkState === 'checking' ? <div className="spinner" style={{ width: 14, height: 14 }} /> :
-               checkState === 'taken' ? 'View' :
-               checkState === 'available' ? 'Register' : 'Search'}
-            </button>
+        <aside className="identity-proof">
+          <div className="proof-orbit" aria-hidden="true">
+            <i />
+            <i />
+            <i />
           </div>
+          <p className="eyebrow">Resolution proof</p>
+          <NameBadge name="identity" />
+          <dl>
+            <div>
+              <dt>Human name</dt>
+              <dd>identity.gen</dd>
+            </div>
+            <div>
+              <dt>Resolver</dt>
+              <dd>0x5e7B…Cdd9</dd>
+            </div>
+            <div>
+              <dt>Payment path</dt>
+              <dd>Wallet → resolved address</dd>
+            </div>
+          </dl>
+          <InlineNotice>
+            Profiles are public resolver records—not identity verification.
+          </InlineNotice>
+        </aside>
+      </section>
+      <section className="section">
+        <Reveal>
+          <SectionHeader
+            eyebrow="Resolver lifecycle"
+            title="One name. Three useful layers."
+          >
+            GNS turns a wallet address into a public identity surface without
+            becoming a custodian.
+          </SectionHeader>
+        </Reveal>
+        <div className="feature-grid">
+          {[
+            [
+              "01",
+              "Claim",
+              "Choose a valid name. AI-assisted validator consensus applies registration policy—not real-world identity proof.",
+            ],
+            [
+              "02",
+              "Resolve",
+              "Read the owner, destination address, profile, and primary reverse name from the active contract.",
+            ],
+            [
+              "03",
+              "Use",
+              "Share a memorable identity and send GEN directly from a wallet to its current resolved address.",
+            ],
+          ].map((x, i) => (
+            <Reveal key={x[0]} delay={i * 70}>
+              <article className="feature-card">
+                <span>{x[0]}</span>
+                <h3>{x[1]}</h3>
+                <p>{x[2]}</p>
+              </article>
+            </Reveal>
+          ))}
         </div>
-
-        {/* Status indicator */}
-        <div className="fade-up-d2" style={{ marginTop: 16, minHeight: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {checkState === 'checking' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 13 }}>
-              <div className="spinner" style={{ width: 14, height: 14 }} />
-              Checking availability...
-            </div>
-          )}
-          {checkState === 'available' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="fade-up">
-              <div className="pulse-dot" style={{ background: 'var(--success)' }} />
-              <span className="font-mono" style={{ fontSize: 15, color: 'var(--success)', fontWeight: 500 }}>{displayName}</span>
-              <span className="tag tag-success">Available</span>
-              {!isConnected && <span style={{ fontSize: 12, color: 'var(--muted)' }}>— connect wallet to register</span>}
-            </div>
-          )}
-          {checkState === 'taken' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} className="fade-up">
-              <div className="pulse-dot" style={{ background: 'var(--error)' }} />
-              <span className="font-mono" style={{ fontSize: 15, color: 'var(--error)', fontWeight: 500 }}>{displayName}</span>
-              <span className="tag tag-error">Taken</span>
-              <button
-                onClick={() => router.push(`/name/${normalized}`)}
-                style={{ fontSize: 12, color: 'rgba(123,47,255,0.8)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                View profile →
-              </button>
-            </div>
-          )}
-          {checkState === 'invalid' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, color: 'var(--muted)' }}>Names must be 3–32 characters, letters, numbers, or hyphens</span>
-            </div>
-          )}
+      </section>
+      <section className="section proof-section">
+        <Reveal>
+          <SectionHeader
+            eyebrow="Verified network proof"
+            title="Contract state, not marketing numbers."
+          >
+            All live values come from GenLayer Bradbury reads.
+          </SectionHeader>
+        </Reveal>
+        <div className="metrics">
+          <article>
+            <span>Registered names</span>
+            <strong>
+              {stats === null ? "—" : <AnimatedNumber value={stats} />}
+            </strong>
+            <small>
+              {stats === null ? "RPC read unavailable" : "get_stats result"}
+            </small>
+          </article>
+          <article>
+            <span>Network</span>
+            <strong>4221</strong>
+            <small>Bradbury testnet</small>
+          </article>
+          <article>
+            <span>Public methods</span>
+            <strong>11</strong>
+            <small>5 writes · 6 views</small>
+          </article>
         </div>
-
-        {/* Stats */}
-        {stats && (
-          <div className="fade-up-d3" style={{ marginTop: 48, display: 'flex', justifyContent: 'center', gap: 32 }}>
-            <div style={{ textAlign: 'center' }}>
-              <p className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>{stats.total_names}</p>
-              <p style={{ fontSize: 11, letterSpacing: '0.1em', color: 'var(--muted)', textTransform: 'uppercase' }}>Names Registered</p>
-            </div>
-            <div style={{ width: 1, background: 'var(--border)' }} />
-            <div style={{ textAlign: 'center' }}>
-              <p className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>GEN</p>
-              <p style={{ fontSize: 11, letterSpacing: '0.1em', color: 'var(--muted)', textTransform: 'uppercase' }}>Native Token</p>
-            </div>
-            <div style={{ width: 1, background: 'var(--border)' }} />
-            <div style={{ textAlign: 'center' }}>
-              <p className="font-display" style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em' }}>.gen</p>
-              <p style={{ fontSize: 11, letterSpacing: '0.1em', color: 'var(--muted)', textTransform: 'uppercase' }}>Namespace</p>
+        <ExternalLink
+          className="contract-link"
+          href={`${BRADBURY_EXPLORER_URL}/address/${CONTRACT_ADDRESS}`}
+        >
+          <span>Active verified contract</span>
+          <code>{CONTRACT_ADDRESS}</code>
+          <b>Open explorer ↗</b>
+        </ExternalLink>
+      </section>
+      <section className="section payment-section">
+        <Reveal>
+          <div>
+            <p className="eyebrow">Non-custodial by architecture</p>
+            <h2>Your wallet sends to their wallet.</h2>
+            <p>
+              GNS resolves the name to an address. Before a direct send, the app
+              reads that address again and asks you to review any change. The
+              registry never receives, holds, or forwards the funds.
+            </p>
+            <div className="payment-flow" aria-label="Payment flow">
+              <span>Sender wallet</span>
+              <i>resolves .gen</i>
+              <span>Recipient address</span>
             </div>
           </div>
-        )}
-      </div>
-
-      <BottomNav />
-      {showRegister && normalized && (
+        </Reveal>
+        <Reveal delay={80}>
+          <aside>
+            <h3>Resolver boundary</h3>
+            <ul>
+              <li>Stores names and public profile data</li>
+              <li>Maps names to owner-selected addresses</li>
+              <li>Does not expose deposit or withdrawal methods</li>
+              <li>Does not claim direct transfers are contract consensus</li>
+            </ul>
+            <a className="button secondary" href="/send">
+              Resolve and send
+            </a>
+          </aside>
+        </Reveal>
+      </section>
+      <section className="final-cta">
+        <Reveal>
+          <p className="eyebrow">A human layer for Bradbury</p>
+          <h2>Start with the name people remember.</h2>
+          <button
+            className="button primary"
+            onClick={() => document.getElementById("name-search")?.focus()}
+          >
+            Search a .gen identity
+          </button>
+        </Reveal>
+      </section>
+      {register && validation.valid && (
         <RegisterModal
-          name={normalized}
-          onClose={() => setShowRegister(false)}
-          onSuccess={() => { setShowRegister(false); router.push(`/name/${normalized}`) }}
+          name={validation.canonical}
+          onClose={() => setRegister(false)}
         />
       )}
-    </main>
-  )
+    </>
+  );
 }

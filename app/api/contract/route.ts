@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CONTRACT_ADDRESS } from '@/lib/config'
 
-const NAME_RE = /^[a-z0-9-]{3,32}(?:\.gen)?$/i
+const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.gen)?$/i
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 
 const READ_METHODS = {
@@ -9,8 +9,7 @@ const READ_METHODS = {
   reverse_resolve: ['address'],
   get_record: ['name'],
   is_available: ['name'],
-  get_balance: ['name'],
-  get_names_by_owner: ['address'],
+  get_names_by_owner: ['address', 'offset', 'limit'],
   get_stats: [],
 } as const
 
@@ -28,6 +27,16 @@ function validateArgs(method: ReadMethod, args: unknown[]) {
 
   for (let i = 0; i < expected.length; i += 1) {
     const value = args[i]
+    if (expected[i] === 'offset' || expected[i] === 'limit') {
+      if (!Number.isInteger(value) || Number(value) < 0) {
+        return `Argument ${i + 1} must be a non-negative integer.`
+      }
+      if (expected[i] === 'limit' && (Number(value) < 1 || Number(value) > 50)) {
+        return 'Limit must be between 1 and 50.'
+      }
+      continue
+    }
+
     if (typeof value !== 'string') return `Argument ${i + 1} must be a string.`
 
     if (expected[i] === 'name' && !NAME_RE.test(value.trim())) {
@@ -80,6 +89,6 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Contract read failed.'
     console.error('[GNS API]', message)
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: 'Bradbury contract read failed. Retry shortly.' }, { status: 502 })
   }
 }
