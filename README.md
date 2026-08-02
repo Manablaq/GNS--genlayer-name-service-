@@ -2,13 +2,30 @@
 
 GNS is a non-custodial identity resolver for `.gen` names on GenLayer Bradbury Testnet. The application combines human-readable names, public resolver profiles, AI-assisted registration policy, reverse resolution, owner management, and direct wallet payments in a responsive identity-infrastructure interface.
 
-## Verified deployment
+## Canonical public evidence
 
-- Network: GenLayer Bradbury Testnet
-- Chain ID: `4221`
-- Active contract: `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`
-- [Contract explorer](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9)
-- [Repository](https://github.com/Manablaq/GNS--genlayer-name-service-)
+Use only the links in this section when evaluating or submitting GNS. They all
+refer to the same active GenLayer Bradbury deployment.
+
+- **Live application:** <https://dotgenapp.vercel.app>
+- **Network:** GenLayer Bradbury Testnet (`chain ID 4221`)
+- **Active contract:** [`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9)
+- **Deployment transaction:** [`0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565`](https://explorer-bradbury.genlayer.com/tx/0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565)
+- **Successful registration transaction:** [`0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76`](https://explorer-bradbury.genlayer.com/tx/0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76)
+- **Repository:** <https://github.com/Manablaq/GNS--genlayer-name-service->
+
+The registration transaction successfully registered `sundayalbert.gen` through
+validator consensus. The resulting record is available through forward
+resolution, reverse resolution, owner-index pagination, and contract statistics.
+The project intentionally describes this as operational testnet evidence—not as
+proof of legal identity or a production security audit.
+
+For a reviewer-oriented evidence map and the exact scope of each claim, see
+[Submission evidence](docs/SUBMISSION_EVIDENCE.md).
+
+> **Important:** `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2` is a retired,
+> defective legacy contract. It is not used by the live application and must not
+> be included in submission evidence. See [legacy retirement](docs/LEGACY_RETIREMENT.md).
 
 The deployed interface has 11 public methods: five non-payable writes (`register`, `update_profile`, `set_address`, `set_primary`, `transfer`) and six views (`resolve`, `reverse_resolve`, `get_record`, `is_available`, `get_names_by_owner`, `get_stats`). There are no admin or custodial payment methods.
 
