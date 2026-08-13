@@ -1,0 +1,2 @@
+# Official GenLayer Direct Mode test runner used by tests/test_gns_v2_direct.py.
+genlayer-test

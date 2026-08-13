@@ -1,4 +1,9 @@
-# GNS submission evidence
+# Historical GNS V2 submission evidence
+
+> This evidence applies only to the previously deployed V2 contract. The V3
+> remediation has not yet been deployed at the time of this document update;
+> do not use this address or receipt as evidence for V3 features. See
+> [REVIEW_RESPONSE_2026-08-12.md](REVIEW_RESPONSE_2026-08-12.md).
 
 This document is the canonical evidence map for the active GNS project on
 GenLayer Bradbury Testnet. It intentionally separates active, reproducible

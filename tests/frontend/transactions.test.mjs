@@ -4,6 +4,7 @@ import {
   CONFIRMED_RETENTION_MS,
   classifyReceipt,
   createTransaction,
+  expectedStateMatches,
   isPendingState,
   isRetryableState,
   isTerminalState,
@@ -267,4 +268,44 @@ test("confirmed entries expire after 24 hours but terminal failures persist", ()
     mergeTransactionCollections([], [confirmed, undetermined], now),
     [undetermined],
   );
+});
+
+test("lifecycle confirmation checks require the matching post-write state", async () => {
+  const renewal = createTransaction({
+    chainId: 4221,
+    wallet,
+    hash: `0x${"d".repeat(64)}`,
+    action: "renew",
+    label: "Renew alice.gen",
+    expected: { action: "renew", name: "alice", values: { expires_at_before: "100" } },
+  });
+  const released = {
+    ...renewal,
+    hash: `0x${"e".repeat(64)}`,
+    action: "release",
+    expected: { action: "release", name: "alice", values: {} },
+  };
+  const challenge = {
+    ...renewal,
+    hash: `0x${"f".repeat(64)}`,
+    action: "challenge_profile",
+    expected: {
+      action: "challenge_profile",
+      name: "alice",
+      values: { source_url: "https://evidence.example/proof", claim: "Specific impersonation evidence." },
+    },
+  };
+  const reads = {
+    getRecord: async () => ({ found: true, owner: wallet, expires_at: "101" }),
+    getChallenge: async () => ({
+      found: true,
+      source_url: "https://evidence.example/proof",
+      claim: "Specific impersonation evidence.",
+    }),
+    reverseResolve: async () => ({ found: false }),
+    checkAvailability: async () => true,
+  };
+  assert.equal(await expectedStateMatches(renewal, reads), true);
+  assert.equal(await expectedStateMatches(released, reads), false);
+  assert.equal(await expectedStateMatches(challenge, reads), true);
 });

@@ -1,9 +1,15 @@
 import json
+from datetime import datetime, timezone
 
 CONTRACT = "contracts/gns.py"
 EMPTY_PROFILE = ("", "", "", "", "")
 SAFE = '{"approved":true,"category":"safe","reason":"safe candidate"}'
 REJECTED = '{"approved":false,"category":"scam_phishing","reason":"phishing intent"}'
+CHALLENGE_SUSPEND = ('{"action":"suspend","category":"impersonation",'
+                     '"confidence_bps":9500,"summary":"The source materially supports impersonation."}')
+CHALLENGE_KEEP = ('{"action":"keep","category":"insufficient_evidence",'
+                  '"confidence_bps":6000,"summary":"The source does not materially support the claim."}')
+EVIDENCE_URL = "https://evidence.example/identity-proof"
 
 
 def address_text(value):
@@ -25,29 +31,30 @@ def owner_names(contract, owner, offset=0, limit=50):
     return json.loads(contract.get_names_by_owner(address_text(owner), offset, limit))
 
 
-def test_deployment_initial_stats_and_serializable_binding(direct_vm, direct_deploy):
+def warp_after(direct_vm, timestamp):
+    direct_vm.warp(datetime.fromtimestamp(timestamp, timezone.utc).isoformat())
+
+
+def test_deployment_initial_stats_and_nested_validator_consensus(direct_vm, direct_deploy):
     direct_vm.check_pickling = True
     contract = deploy_with_safe_llm(direct_vm, direct_deploy)
     assert json.loads(contract.get_stats()) == {"total_names": 0}
     contract.register("ALICE.GEN", *EMPTY_PROFILE)
     assert json.loads(contract.get_stats()) == {"total_names": 1}
-    assert direct_vm._captured_validators
-    stored, leader, validator = direct_vm._captured_validators[-1]
-    assert stored == {"approved": True, "category": "safe", "reason": "safe candidate"}
-    assert leader.__name__ == "__call__"
-    assert validator.__name__ == "__call__"
-    assert leader.__self__.payload == '{"canonical_name":"alice"}'
-    assert validator.__self__.payload == '{"canonical_name":"alice"}'
-    import cloudpickle
-    serialized = cloudpickle.dumps(leader)
-    leader.__self__.payload = '{"canonical_name":"changed"}'
-    restored = cloudpickle.loads(serialized)
-    assert restored.__self__.payload == '{"canonical_name":"alice"}'
-    leader.__self__.payload = '{"canonical_name":"alice"}'
     assert direct_vm.run_validator() is True
     result = record(contract, "alice")
     assert result["owner"].lower() == address_text(direct_vm.sender).lower()
     assert result["resolved"].lower() == address_text(direct_vm.sender).lower()
+    assert result["status"] == "active"
+    assert int(result["expires_at"]) > 0
+
+
+def test_nested_registration_validator_rejects_different_policy_outcome(direct_vm, direct_deploy):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("alice", *EMPTY_PROFILE)
+    direct_vm.clear_mocks()
+    direct_vm.mock_llm(r".*", REJECTED)
+    assert direct_vm.run_validator() is False
 
 
 def test_duplicate_invalid_reserved_and_unicode(direct_vm, direct_deploy):
@@ -64,7 +71,7 @@ def test_duplicate_invalid_reserved_and_unicode(direct_vm, direct_deploy):
 def test_rejected_and_malformed_moderation_are_atomic(direct_vm, direct_deploy):
     contract = direct_deploy(CONTRACT)
     direct_vm.mock_llm(r".*", REJECTED)
-    with direct_vm.expect_revert("name rejected: scam_phishing"):
+    with direct_vm.expect_revert("registration rejected: scam_phishing"):
         contract.register("scam-name", *EMPTY_PROFILE)
     assert json.loads(contract.get_stats())["total_names"] == 0
     assert record(contract, "scam-name")["found"] is False
@@ -106,6 +113,55 @@ def test_owner_only_profile_address_and_primary(direct_vm, direct_deploy, direct
     assert json.loads(contract.reverse_resolve(address_text(owner)))["name"] == "alice.gen"
 
 
+def test_post_registration_profile_is_independently_moderated(direct_vm, direct_deploy):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("alice", *EMPTY_PROFILE)
+    direct_vm.clear_mocks()
+    direct_vm.mock_llm(r".*", REJECTED)
+    with direct_vm.expect_revert("profile rejected: scam_phishing"):
+        contract.update_profile("alice", "", "A deceptive recovery offer", "", "", "")
+    assert record(contract, "alice")["bio"] == ""
+
+
+def test_release_and_delayed_recovery_lifecycle(direct_vm, direct_deploy, direct_bob):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    owner = direct_vm.sender
+    contract.register("recoverable", *EMPTY_PROFILE)
+    contract.set_recovery("recoverable", address_text(direct_bob))
+    with direct_vm.prank(direct_bob):
+        contract.initiate_recovery("recoverable", address_text(direct_bob))
+    pending = record(contract, "recoverable")
+    assert pending["recovery_configured"] is True
+    assert pending["recovery_pending"] is True
+    with direct_vm.expect_revert("recovery delay has not elapsed"):
+        contract.execute_recovery("recoverable")
+    warp_after(direct_vm, int(pending["recovery_available_at"]) + 1)
+    contract.execute_recovery("recoverable")
+    recovered = record(contract, "recoverable")
+    assert recovered["owner"].lower() == address_text(direct_bob).lower()
+    assert recovered["resolved"].lower() == address_text(direct_bob).lower()
+    assert recovered["recovery_configured"] is False
+    with direct_vm.prank(direct_bob):
+        contract.release("recoverable")
+    assert contract.is_available("recoverable") is True
+
+
+def test_expiry_blocks_resolution_then_renewal_or_expired_release(direct_vm, direct_deploy):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("renewable", *EMPTY_PROFILE)
+    contract.register("releasable", *EMPTY_PROFILE)
+    expires_at = int(record(contract, "renewable")["expires_at"])
+    warp_after(direct_vm, expires_at + 1)
+    assert record(contract, "renewable")["status"] == "expired"
+    assert json.loads(contract.resolve("renewable"))["found"] is False
+    with direct_vm.expect_revert("name is not active: expired"):
+        contract.set_primary("renewable")
+    contract.renew("renewable")
+    assert record(contract, "renewable")["status"] == "active"
+    contract.release_expired("releasable")
+    assert contract.is_available("releasable") is True
+
+
 def test_transfer_real_swap_pop_and_primary_policy(
     direct_vm, direct_deploy, direct_bob
 ):
@@ -141,3 +197,36 @@ def test_pagination_and_more_than_200_global_registrations(direct_vm, direct_dep
     assert page["names"] == [f"global-{index}.gen" for index in range(200, 205)]
     with direct_vm.expect_revert("invalid pagination"):
         contract.get_names_by_owner(address_text(owner), 0, 51)
+
+
+def test_source_backed_challenge_suspends_only_after_validator_agreement(
+    direct_vm, direct_deploy
+):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("profile-name", *EMPTY_PROFILE)
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(r".*evidence\.example.*", {"status": 200, "body": "Independent source documents the impersonation."})
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    contract.challenge_profile("profile-name", EVIDENCE_URL, "The profile impersonates this source.")
+    assert direct_vm.run_validator() is True
+    assert record(contract, "profile-name")["status"] == "suspended"
+    challenge = json.loads(contract.get_challenge("profile-name"))
+    assert challenge["action"] == "suspend"
+    assert challenge["category"] == "impersonation"
+    assert challenge["confidence_bps"] == 9500
+    assert json.loads(contract.resolve("profile-name"))["found"] is False
+
+
+def test_source_backed_challenge_validator_rejects_conflicting_outcome(
+    direct_vm, direct_deploy
+):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("profile-name", *EMPTY_PROFILE)
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(r".*evidence\.example.*", {"status": 200, "body": "Independent source documents the impersonation."})
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    contract.challenge_profile("profile-name", EVIDENCE_URL, "The profile impersonates this source.")
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(r".*evidence\.example.*", {"status": 200, "body": "Independent source documents the impersonation."})
+    direct_vm.mock_llm(r".*", CHALLENGE_KEEP)
+    assert direct_vm.run_validator() is False

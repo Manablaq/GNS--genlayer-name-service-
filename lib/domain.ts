@@ -30,6 +30,16 @@ export function safeExternalUrl(value: string): string | null {
     const url = new URL(value)
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
     if (!url.hostname || url.username || url.password) return null
+    const host = url.hostname.toLowerCase()
+    if (
+      host === 'localhost' || host.endsWith('.localhost') || host === '::1' ||
+      host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.') ||
+      host.startsWith('169.254.')
+    ) return null
+    if (host.startsWith('172.')) {
+      const second = Number(host.split('.')[1])
+      if (Number.isInteger(second) && second >= 16 && second <= 31) return null
+    }
     return url.toString()
   } catch { return null }
 }

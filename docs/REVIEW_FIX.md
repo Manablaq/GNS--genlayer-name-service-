@@ -1,4 +1,7 @@
-# Professional reviewer fix evidence map
+# Historical V2 reviewer fix evidence map
+
+> This document records the prior V2 remediation. The current V3 response is
+> [REVIEW_RESPONSE_2026-08-12.md](REVIEW_RESPONSE_2026-08-12.md).
 
 Deployment, source identity, registration, and the listed read paths are verified
 for the final corrected GNS V2 deployment. Unexecuted lifecycle scenarios remain

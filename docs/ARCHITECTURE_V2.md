@@ -1,4 +1,8 @@
-# GNS V2 architecture
+# Historical GNS V2 architecture
+
+> This document describes the prior V2 deployment only. It is not the active
+> V3 remediation design. See [the V3 review response](REVIEW_RESPONSE_2026-08-12.md)
+> and the root README for the current deployment candidate.
 
 ## Scope
 

@@ -1,4 +1,7 @@
-# Bradbury nondeterministic callable-shape A/B
+# Historical Bradbury nondeterministic callable-shape A/B
+
+> This is V2 history. The V3 nested-validator implementation and current test
+> expectations are documented in [REVIEW_RESPONSE_2026-08-12.md](REVIEW_RESPONSE_2026-08-12.md).
 
 ## Triggering GNS evidence
 

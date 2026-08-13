@@ -27,7 +27,16 @@ export type TxAction =
   | "update_profile"
   | "set_address"
   | "set_primary"
-  | "transfer";
+  | "transfer"
+  | "renew"
+  | "release"
+  | "release_expired"
+  | "set_recovery"
+  | "clear_recovery"
+  | "initiate_recovery"
+  | "cancel_recovery"
+  | "execute_recovery"
+  | "challenge_profile";
 
 export interface ExpectedState {
   action: TxAction;
@@ -75,6 +84,15 @@ const actions = new Set<TxAction>([
   "set_address",
   "set_primary",
   "transfer",
+  "renew",
+  "release",
+  "release_expired",
+  "set_recovery",
+  "clear_recovery",
+  "initiate_recovery",
+  "cancel_recovery",
+  "execute_recovery",
+  "challenge_profile",
 ]);
 const terminalStates = new Set<TxState>([
   "confirmed",
@@ -339,6 +357,7 @@ export async function expectedStateMatches(
   tx: ManagedTransaction,
   reads: {
     getRecord: (name: string) => Promise<Record<string, unknown>>;
+    getChallenge: (name: string) => Promise<Record<string, unknown>>;
     reverseResolve: (address: string) => Promise<Record<string, unknown>>;
     checkAvailability: (name: string) => Promise<unknown>;
   },
@@ -364,6 +383,21 @@ export async function expectedStateMatches(
       reverse.name.toLowerCase() === `${name}.gen`.toLowerCase()
     );
   }
+  if (action === "release" || action === "release_expired") {
+    const [available, record] = await Promise.all([
+      reads.checkAvailability(name),
+      reads.getRecord(name),
+    ]);
+    return available === true && record?.found === false;
+  }
+  if (action === "challenge_profile") {
+    const challenge = await reads.getChallenge(name);
+    return (
+      challenge?.found === true &&
+      challenge.source_url === values.source_url &&
+      challenge.claim === values.claim
+    );
+  }
   const record = await reads.getRecord(name);
   if (!record?.found) return false;
   if (action === "set_address") {
@@ -373,6 +407,31 @@ export async function expectedStateMatches(
     );
   }
   if (action === "transfer") {
+    return (
+      typeof record.owner === "string" &&
+      record.owner.toLowerCase() === values.owner?.toLowerCase()
+    );
+  }
+  if (action === "renew") {
+    return (
+      typeof record.owner === "string" &&
+      record.owner.toLowerCase() === tx.wallet.toLowerCase() &&
+      typeof record.expires_at === "string" &&
+      BigInt(record.expires_at) > BigInt(values.expires_at_before || "0")
+    );
+  }
+  if (action === "set_recovery") {
+    return (
+      record.recovery_configured === true &&
+      typeof record.recovery_address === "string" &&
+      record.recovery_address.toLowerCase() === values.recovery_address?.toLowerCase()
+    );
+  }
+  if (action === "clear_recovery" || action === "cancel_recovery") {
+    return record.recovery_pending === false && record.recovery_configured === (action === "cancel_recovery");
+  }
+  if (action === "initiate_recovery") return record.recovery_pending === true;
+  if (action === "execute_recovery") {
     return (
       typeof record.owner === "string" &&
       record.owner.toLowerCase() === values.owner?.toLowerCase()

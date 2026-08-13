@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { useAccount } from "wagmi";
-import { checkAvailability, getRecord, reverseResolve } from "@/lib/genlayer";
+import { checkAvailability, getChallenge, getRecord, reverseResolve } from "@/lib/genlayer";
 import { TX_POLL_INTERVAL_MS, TX_TIMEOUT_MS } from "@/lib/config";
 import {
   ManagedTransaction,
@@ -170,6 +170,7 @@ export function TransactionProvider({
           if (state === "confirmation") {
             const confirmed = await expectedStateMatches(tx, {
               getRecord,
+              getChallenge,
               reverseResolve,
               checkAvailability,
             });

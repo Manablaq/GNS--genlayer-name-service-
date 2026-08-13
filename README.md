@@ -1,96 +1,132 @@
-# GNS — GenLayer Name Service
+# GNS: GenLayer Name Service
 
-GNS is a non-custodial identity resolver for `.gen` names on GenLayer Bradbury Testnet. The application combines human-readable names, public resolver profiles, AI-assisted registration policy, reverse resolution, owner management, and direct wallet payments in a responsive identity-infrastructure interface.
+GNS is a full GenLayer application for non-custodial `.gen` names: a user
+registers a human-readable name, maintains a public profile and resolved wallet
+address, and can receive a direct wallet payment without routing funds through
+the registry. The contract does not hold, forward, or settle user payments.
 
-## Canonical public evidence
+This branch contains the **V3 remediation release** requested during project
+review. It adds an evidence-backed public challenge path, leases, release,
+delayed recovery, and moderation on every profile update. It must be deployed
+as a new Bradbury contract before the frontend is pointed at it.
 
-Use only the links in this section when evaluating or submitting GNS. They all
-refer to the same active GenLayer Bradbury deployment.
+## Status and public links
 
-- **Live application:** <https://dotgenapp.vercel.app>
-- **Network:** GenLayer Bradbury Testnet (`chain ID 4221`)
-- **Active contract:** [`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9)
-- **Deployment transaction:** [`0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565`](https://explorer-bradbury.genlayer.com/tx/0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565)
-- **Successful registration transaction:** [`0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76`](https://explorer-bradbury.genlayer.com/tx/0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76)
-- **Repository:** <https://github.com/Manablaq/GNS--genlayer-name-service->
+| Item | Link or status |
+| --- | --- |
+| Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
+| Current public application | <https://dotgenapp.vercel.app> |
+| Previously deployed V2 contract | [`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9) |
+| V3 deployment | Pending. Do not represent the V2 address as V3 evidence. |
 
-The registration transaction successfully registered `sundayalbert.gen` through
-validator consensus. The resulting record is available through forward
-resolution, reverse resolution, owner-index pagination, and contract statistics.
-The project intentionally describes this as operational testnet evidence—not as
-proof of legal identity or a production security audit.
+The deployed V2 address remains documented as historical project evidence, but
+it does not implement this remediation. Deployment and frontend configuration
+instructions are below; replace the configured address only after the V3
+deployment transaction is accepted.
 
-For a reviewer-oriented evidence map and the exact scope of each claim, see
-[Submission evidence](docs/SUBMISSION_EVIDENCE.md).
+## Review remediation
 
-> **Important:** `0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2` is a retired,
-> defective legacy contract. It is not used by the live application and must not
-> be included in submission evidence. See [legacy retirement](docs/LEGACY_RETIREMENT.md).
+The V3 change set answers every requested item. Detailed rationale and test
+mapping are in [the review response](docs/REVIEW_RESPONSE_2026-08-12.md).
 
-The deployed interface has 11 public methods: five non-payable writes (`register`, `update_profile`, `set_address`, `set_primary`, `transfer`) and six views (`resolve`, `reverse_resolve`, `get_record`, `is_available`, `get_names_by_owner`, `get_stats`). There are no admin or custodial payment methods.
+| Review request | V3 implementation |
+| --- | --- |
+| Source-backed entitlement or challenge | `challenge_profile` accepts a public HTTP(S) source and a specific claim. The leader and every validator fetch the source independently and reapply the stored policy. |
+| Decision binding | Validators require exact agreement on `action`, `category`, and `confidence_bps` before the resulting challenge can change status. |
+| Expiry and release | Every registration has `expires_at`, `renew`, owner `release`, and public `release_expired`. Expired or suspended names no longer resolve. |
+| Recovery | Owners configure a recovery address; that address can initiate a transfer to a nominated account. Execution is delayed seven days and owners can cancel. |
+| Post-registration moderation | `update_profile` reruns the same strict structured moderation policy before writing profile data. A safe remediation reactivates a suspended, unexpired name. |
+| Direct Mode test repair | Direct Mode uses the supported `direct_vm.run_validator()` interface and no longer reads private mock internals. |
 
-## Route map
+## Contract design
+
+The implementation is [contracts/gns.py](contracts/gns.py). `NameRecord` holds
+the owner, resolver destination, bounded profile fields, expiry, recovery state,
+and a lifecycle status. Owner-name indexing uses maintained `TreeMap` slots and
+swap-and-pop removal, so owner pagination never scans global records.
+
+### Lifecycle
+
+1. `register` gives the sender a one-year lease after name and initial profile moderation.
+2. `renew` extends from the later of the current expiry or the current transaction time.
+3. `release` lets the owner delete a record immediately. After expiry, anyone can call `release_expired`.
+4. `set_recovery` records a distinct recovery address. `initiate_recovery` starts a seven-day delay; `cancel_recovery` stops it; `execute_recovery` transfers ownership after the delay and clears recovery state.
+5. `resolve` and `reverse_resolve` return a usable recipient only while the record is active. `get_record` still exposes lifecycle state so owners can renew or remediate it.
+
+### Moderation and public challenges
+
+Initial registrations and profile updates serialize bounded public fields and
+run nested leader/validator functions. The validator independently performs the
+same policy evaluation, then compares the outcome fields that control storage.
+
+`challenge_profile` adds a source-backed moderation route. It validates a
+credential-free public HTTP(S) URL and a bounded claim, fetches the source in
+each independent evaluation, truncates evidence to a fixed size, and asks the
+policy to produce only a strict result schema. Only a matching `suspend` result
+records the challenge and pauses resolution. The stored challenge exposes the
+source, claim, decision, category, confidence, summary, and timestamp.
+
+No writes, emits, or contract calls occur inside a non-deterministic callback.
+This follows GenLayer's guidance that leaders and validators independently fetch
+web data and that consensus should compare stable, consequential derived fields.
+
+## Application routes
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Product overview, live availability/resolver search, recent searches, network proof, and registration |
-| `/name/[name]` | Public identity profile, resolver proof, direct-send entry, and wallet-owner controls |
-| `/my-names` | Paginated owner dashboard (12 per page; contract maximum respected at 50) |
-| `/send` | Resolve, review, revalidate, and submit a direct injected-wallet payment |
-| `/api/contract` | Allowlisted, validated server-side contract reads only |
+| `/` | Availability search and registration |
+| `/name/[name]` | Public profile, lifecycle state, evidence challenge, owner controls, and recovery controls |
+| `/my-names` | Paginated owner dashboard with lifecycle status |
+| `/send` | Resolve, review, reread, and send GEN directly from the connected wallet |
+| `/api/contract` | Allowlisted server-side read bridge |
 
-## Frontend architecture
+The frontend confirms a submitted contract write only after the Bradbury receipt
+is successful and a method-specific read proves the expected result. For
+example, a challenge must produce the submitted source and claim in
+`get_challenge`; a release must make the name available; and a renewal must
+advance `expires_at`.
 
-The root layout retains a server-rendered document and uses `next/font` for layout-stable font loading. A deliberately small client provider boundary owns injected-wallet state, the persistent application shell, and the global transaction manager. Contract reads remain allowlisted through the route handler; contract writes happen client-side through the injected provider and `genlayer-js`.
+## Local development and verification
 
-Reusable UI includes status badges, notices, skeletons, empty/error states, copy and address controls, section headers, a focus-managed confirmation dialog, transaction tray, network badge, and restrained viewport reveal/count-up primitives.
-
-## Non-blocking transaction lifecycle
-
-After an injected wallet returns a GenLayer transaction hash, the submitting dialog closes and a namespaced serializable record is stored in `localStorage`. The global provider, mounted above routes, quietly polls structured receipt fields while navigation remains available. Records are keyed by chain, active contract, connected wallet, and hash; other wallet/network records are retained but paused. Storage events synchronize tabs and duplicate hashes are removed only inside the full namespace.
-
-States are: submitted, processing, confirmation, confirmation delayed, confirmed, execution failed, canceled, undetermined, and unknown/retryable. `ACCEPTED` is not success on its own. A transaction becomes confirmed only after successful receipt execution (`AGREE` plus `FINISHED_WITH_RETURN`) and an action-specific contract read:
-
-- registration: unavailable and owner equals sender;
-- profile update: normalized stored fields match;
-- address update: resolved address matches;
-- primary update: reverse resolution matches;
-- transfer: owner matches the recipient.
-
-Retry checks never resubmit a transaction.
-
-## Direct non-custodial payments
-
-The send route resolves the `.gen` record, displays the full recipient address, validates the GEN amount, requires review, and reads the resolver again before invoking the wallet. GNS never receives or holds these funds. A returned wallet hash is described as submitted, not as GenLayer contract acceptance.
-
-## Motion and accessibility policy
-
-Motion uses CSS and IntersectionObserver rather than a global animation dependency. Reveals use small opacity/translate changes once, number count-up starts on visibility, and scroll progress writes a transform inside `requestAnimationFrame`. There is no scroll hijacking, mouse-following effect, WebGL, or permanent particle loop. Under `prefers-reduced-motion: reduce`, reveals are static, smooth scrolling is disabled, animation/transition duration is effectively removed, and scroll progress is hidden.
-
-The shell includes a skip link and semantic landmarks. Controls use visible focus, minimum touch sizing, durable labels, live feedback, non-color status text, safe wrapping, and modal Escape/focus return/trapping behavior. External profile URLs are validated and opened with `noopener noreferrer`.
-
-## Supported responsive targets
-
-The layout is designed and CSS-hardened for `360×800`, `390×844`, `768×1024`, `1024×768`, `1280×800`, and `1440×900`. Below 640px the desktop navigation becomes a safe-area-aware bottom bar; dialogs become scrollable bottom sheets and the transaction tray fits between the header and bottom navigation.
-
-## Local validation
+Requirements: Node.js 20+, Python 3.12+, and a wallet configured for Bradbury
+when manually deploying.
 
 ```bash
 npm install
-python3 -m unittest discover -s tests -v
-/Users/mralbert/.venvs/genvm-lint/bin/genvm-lint check contracts/gns.py
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+
 npm run lint
+npm test
+python3 -m unittest tests/test_gns_v2.py -v
+.venv/bin/pytest tests/test_gns_v2_direct.py -v
 npm run build
-npm test --if-present
-npx tsc --noEmit
-npm audit
-git diff --check
 ```
 
-## Manual QA
+The Direct Mode suite covers independent validator agreement and disagreement,
+profile moderation after registration, source-backed suspension, expiry,
+renewal, expired release, recovery delay and execution, indexing, transfer, and
+pagination. It uses the exact dependency hash declared on line 1 of the
+contract.
 
-Do not submit a real transaction during review. Run the app and inspect all routes at the six target viewports. Test keyboard-only navigation, Escape/focus return in dialogs, reduced motion, no-wallet and wrong-network states, mocked RPC failures, long profile values, address wrapping, storage synchronization, and mocked pending/failed receipts. Confirm there is one transaction poller mounted above routes and no hydration or console warnings.
+`genvm-lint` can be run with:
 
-## Limits and claims
+```bash
+/Users/mralbert/.venvs/genvm-lint/bin/genvm-lint check contracts/gns.py
+```
 
-`.gen` names are records in this contract, not ENS names. AI-assisted validator consensus performs registration policy moderation; it is not proof of a person, organization, or external identity. Bradbury receipt and explorer state may remain delayed or undetermined. Historical contract addresses are documentation only and are not active.
+## Deployment sequence
+
+1. In GenLayer Studio, load `contracts/gns.py` and deploy a **new** instance on Bradbury. Do not upgrade the prior V2 instance.
+2. Wait for an accepted deployment receipt and record the new address and transaction hash.
+3. Run the contract smoke sequence in Studio: register a safe name, update its profile, configure recovery, submit one source-backed challenge, and read `get_record` and `get_challenge`.
+4. Replace `CONTRACT_ADDRESS` in `lib/config.ts` with the new V3 address, update the public evidence documents with the new accepted receipt, then deploy the frontend.
+5. Re-run the frontend transaction smoke checks against that V3 address. The old deployment must remain labelled V2/history.
+
+## Limits
+
+`.gen` names are records in GNS, not ENS names or legal identity documents.
+Moderation and source-backed challenges are policy decisions reached through
+GenLayer consensus; they are not a claim that GNS verifies off-chain identity.
+Bradbury is testnet infrastructure and this project has not been presented as a
+production security audit.

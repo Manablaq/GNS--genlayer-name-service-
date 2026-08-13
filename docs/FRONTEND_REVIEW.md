@@ -64,7 +64,7 @@ Wallet libraries remain global because wallet status and pending activity are sh
 
 ## Security and data integrity
 
-No user values use raw HTML. Profile links are parsed and restricted to HTTP(S); credential-bearing URLs and unsafe schemes are rejected. The API refuses arbitrary contract method calls and returns a generic upstream failure rather than raw internal errors. Client writes are a five-method union and always target the fixed active contract. Optimistic submissions are never presented as finalized. Direct send targets the freshly resolved address and never the GNS contract.
+No user values use raw HTML. Profile links are parsed and restricted to public HTTP(S); credential-bearing URLs, loopback addresses, and unsafe schemes are rejected. The API refuses arbitrary contract method calls and returns a generic upstream failure rather than raw internal errors. Client writes are an allowlisted union and always target the configured contract address. Optimistic submissions are never presented as finalized. Direct send targets the freshly resolved address and never the GNS contract.
 
 ## Transaction retention and synchronization
 

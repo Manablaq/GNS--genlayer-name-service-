@@ -21,6 +21,7 @@ interface ResolverRecord {
   name: string;
   resolved: `0x${string}`;
   bio?: string;
+  status?: "active" | "suspended" | "expired";
 }
 export default function SendPage() {
   const query = useSearchParams();
@@ -52,7 +53,7 @@ export default function SendPage() {
     setError("");
     try {
       const value = (await getRecord(validation.canonical)) as ResolverRecord;
-      if (value?.found && value?.resolved) {
+      if (value?.found && value?.resolved && value.status === "active") {
         setRecord(value);
         setState("found");
       } else setState("missing");
@@ -67,7 +68,7 @@ export default function SendPage() {
     setError("");
     try {
       const latest = (await getRecord(validation.canonical)) as ResolverRecord;
-      if (!latest?.found || !latest.resolved)
+      if (!latest?.found || !latest.resolved || latest.status !== "active")
         throw new Error(
           "The name no longer resolves. No transfer was submitted.",
         );
@@ -197,7 +198,7 @@ export default function SendPage() {
               <NameBadge name={record.name} />
               <p>{record.bio || "Public GNS resolver profile"}</p>
             </div>
-            <StatusBadge tone="success">Resolved now</StatusBadge>
+          <StatusBadge tone="success">Resolved now</StatusBadge>
           </div>
           <div className="address-row">
             <AddressDisplay address={record.resolved} />
