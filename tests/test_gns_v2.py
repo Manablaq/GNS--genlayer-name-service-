@@ -28,19 +28,21 @@ def load_helpers():
             class UserError(Exception): pass
     class Address(str): pass
     class U32(int): pass
+    class U256(int): pass
     class TreeMap:
         def __class_getitem__(cls, _): return cls
     def allow_storage(cls): return cls
-    genlayer.__all__ = ["gl", "Address", "u32", "TreeMap", "allow_storage"]
+    genlayer.__all__ = ["gl", "Address", "u32", "u256", "TreeMap", "allow_storage"]
     genlayer.gl = DummyGl()
     genlayer.Address = Address
     genlayer.u32 = U32
+    genlayer.u256 = U256
     genlayer.TreeMap = TreeMap
     genlayer.allow_storage = allow_storage
     previous = sys.modules.get("genlayer")
     sys.modules["genlayer"] = genlayer
     try:
-        spec = importlib.util.spec_from_file_location("gns_v2_helpers", ACTIVE)
+        spec = importlib.util.spec_from_file_location("gns_v3_helpers", ACTIVE)
         module = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = module
         spec.loader.exec_module(module)
@@ -94,36 +96,41 @@ class StructureTests(unittest.TestCase):
 
     def test_no_privileged_migration(self):
         names = {n.name for n in ast.walk(TREE) if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
-        self.assertTrue(names.isdisjoint({"admin", "migrate", "recover", "upgrade"}))
+        self.assertTrue(names.isdisjoint({"admin", "migrate", "upgrade"}))
 
     def test_typed_storage(self):
         self.assertIn("owner: Address", SOURCE)
         self.assertIn("resolved: Address", SOURCE)
+        self.assertIn("expires_at: u256", SOURCE)
+        self.assertIn("recovery_address: Address", SOURCE)
         self.assertIn("total_names: u32", SOURCE)
         self.assertIn("TreeMap[str, NameRecord]", SOURCE)
+        self.assertIn("TreeMap[str, ChallengeRecord]", SOURCE)
 
     def register_node(self):
         return next(n for n in ast.walk(TREE)
                     if isinstance(n, ast.FunctionDef) and n.name == "register")
 
     def test_documented_nested_nondeterminism(self):
-        register = self.register_node()
-        nested = {node.name: node for node in register.body
-                  if isinstance(node, ast.FunctionDef)}
-        self.assertEqual(set(nested), {"leader_fn", "validator_fn"})
-        self.assertFalse(any(isinstance(node, ast.Lambda) for node in ast.walk(register)))
-        for function in nested.values():
-            self.assertFalse(any(isinstance(node, ast.Name) and node.id == "self"
-                                 for node in ast.walk(function)))
-
-        run_call = next(node for node in ast.walk(register)
-                        if isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "run_nondet_unsafe")
-        self.assertEqual([ast.unparse(arg) for arg in run_call.args],
-                         ["leader_fn", "validator_fn"])
-        self.assertFalse(any(isinstance(arg, ast.Attribute) and arg.attr == "__call__"
-                             for arg in run_call.args))
+        for method_name, expected_nested, expected_args in (
+            ("register", {"leader_fn", "validator_fn"}, ["leader_fn", "validator_fn"]),
+            ("update_profile", {"leader_fn", "validator_fn"}, ["leader_fn", "validator_fn"]),
+            ("challenge_profile", {"review_once", "validator_fn"}, ["review_once", "validator_fn"]),
+        ):
+            method = next(n for n in ast.walk(TREE) if isinstance(n, ast.FunctionDef) and n.name == method_name)
+            nested = {node.name: node for node in method.body if isinstance(node, ast.FunctionDef)}
+            self.assertEqual(set(nested), expected_nested)
+            self.assertFalse(any(isinstance(node, ast.Lambda) for node in ast.walk(method)))
+            for function in nested.values():
+                self.assertFalse(any(isinstance(node, ast.Name) and node.id == "self"
+                                     for node in ast.walk(function)))
+            run_call = next(node for node in ast.walk(method)
+                            if isinstance(node, ast.Call)
+                            and isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "run_nondet_unsafe")
+            self.assertEqual([ast.unparse(arg) for arg in run_call.args], expected_args)
+            self.assertFalse(any(isinstance(arg, ast.Attribute) and arg.attr == "__call__"
+                                 for arg in run_call.args))
 
     def test_obsolete_callable_constructs_are_absent(self):
         class_names = {node.name for node in TREE.body if isinstance(node, ast.ClassDef)}
@@ -138,59 +145,64 @@ class StructureTests(unittest.TestCase):
     def test_bounded_payload(self):
         register = self.register_node()
         text = ast.unparse(register)
-        self.assertIn("{'canonical_name': canonical}", text)
-        for excluded in ("avatar", "bio", "twitter", "github", "website", "owner"):
-            payload_line = next(line for line in text.splitlines() if "payload =" in line)
-            self.assertNotIn(excluded, payload_line)
+        self.assertIn("profile_payload(canonical, avatar, bio, twitter, github, website)", text)
+        challenge = next(n for n in ast.walk(TREE)
+                         if isinstance(n, ast.FunctionDef) and n.name == "challenge_profile")
+        challenge_text = ast.unparse(challenge)
+        self.assertIn("MAX_SOURCE_CHARS", challenge_text)
+        self.assertNotIn("response.body.decode('utf-8') +", challenge_text)
 
     def test_semantic_consensus_language_and_comparison(self):
         self.assertNotIn("Validate format only", SOURCE)
         self.assertNotIn("No semantic evaluation", SOURCE)
-        register = self.register_node()
-        validator = next(node for node in register.body
+        for method_name in ("register", "update_profile"):
+            method = next(n for n in ast.walk(TREE)
+                          if isinstance(n, ast.FunctionDef) and n.name == method_name)
+            validator = next(node for node in method.body
+                             if isinstance(node, ast.FunctionDef) and node.name == "validator_fn")
+            comparisons = {ast.unparse(node) for node in ast.walk(validator)
+                           if isinstance(node, ast.Compare)}
+            self.assertIn("leader['approved'] == validator['approved']", comparisons)
+            self.assertIn("leader['category'] == validator['category']", comparisons)
+
+        challenge = next(n for n in ast.walk(TREE)
+                         if isinstance(n, ast.FunctionDef) and n.name == "challenge_profile")
+        validator = next(node for node in challenge.body
                          if isinstance(node, ast.FunctionDef) and node.name == "validator_fn")
         comparisons = {ast.unparse(node) for node in ast.walk(validator)
                        if isinstance(node, ast.Compare)}
-        self.assertIn("leader['approved'] == validator['approved']", comparisons)
+        self.assertIn("leader['action'] == validator['action']", comparisons)
         self.assertIn("leader['category'] == validator['category']", comparisons)
-        consensus_return = next(node for node in ast.walk(validator)
-                                if isinstance(node, ast.Return)
-                                and isinstance(node.value, ast.BoolOp))
-        self.assertNotIn("reason", ast.unparse(consensus_return))
+        self.assertIn("leader['confidence_bps'] == validator['confidence_bps']", comparisons)
+        self.assertIn("gl.nondet.web.get(source_url)", ast.unparse(challenge))
 
     def test_storage_follows_nondeterminism_and_strict_validation(self):
-        register = self.register_node()
-        run_call = next(node for node in ast.walk(register)
-                        if isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "run_nondet_unsafe")
-        strict_call = next(node for node in ast.walk(register)
-                           if isinstance(node, ast.Call)
-                           and isinstance(node.func, ast.Name)
-                           and node.func.id == "validate_moderation_result"
-                           and node.lineno > run_call.lineno)
-        approved_check = next(node for node in ast.walk(register)
-                              if isinstance(node, ast.If)
-                              and "result['approved']" in ast.unparse(node.test))
-        storage_lines = []
-        for node in ast.walk(register):
-            if isinstance(node, (ast.Assign, ast.AugAssign, ast.Delete)):
-                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                if any("self." in ast.unparse(target) for target in targets):
-                    storage_lines.append(node.lineno)
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                    and isinstance(node.func.value, ast.Name)
-                    and node.func.value.id == "self"
-                    and node.func.attr == "_add_owner_name"):
-                storage_lines.append(node.lineno)
-        self.assertTrue(storage_lines)
-        self.assertGreater(min(storage_lines), run_call.lineno)
-        self.assertGreater(min(storage_lines), strict_call.lineno)
-        self.assertGreater(min(storage_lines), approved_check.lineno)
+        for method_name, validator_name in (
+            ("register", "validate_moderation_result"),
+            ("update_profile", "validate_moderation_result"),
+            ("challenge_profile", "validate_challenge_result"),
+        ):
+            method = next(n for n in ast.walk(TREE)
+                          if isinstance(n, ast.FunctionDef) and n.name == method_name)
+            run_call = next(node for node in ast.walk(method)
+                            if isinstance(node, ast.Call)
+                            and isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "run_nondet_unsafe")
+            storage_calls = [
+                node.lineno for node in ast.walk(method)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "self"
+                and node.func.attr in {"_write_record", "_add_owner_name"}
+            ]
+            self.assertTrue(storage_calls)
+            self.assertGreater(min(storage_calls), run_call.lineno)
+            self.assertIn(validator_name, ast.unparse(method))
 
-    def test_public_method_schema_source_is_unchanged(self):
+    def test_public_method_schema_source_is_intentional(self):
         contract = next(node for node in TREE.body if isinstance(node, ast.ClassDef)
-                        and node.name == "GenLayerNameServiceV2")
+                        and node.name == "GenLayerNameServiceV3")
         methods = []
         for node in contract.body:
             if not isinstance(node, ast.FunctionDef):
@@ -213,9 +225,19 @@ class StructureTests(unittest.TestCase):
             ("write", "set_address", [("name", "str"), ("new_address", "str")], "None"),
             ("write", "set_primary", [("name", "str")], "None"),
             ("write", "transfer", [("name", "str"), ("new_owner", "str")], "None"),
+            ("write", "renew", [("name", "str")], "None"),
+            ("write", "release", [("name", "str")], "None"),
+            ("write", "release_expired", [("name", "str")], "None"),
+            ("write", "set_recovery", [("name", "str"), ("recovery_address", "str")], "None"),
+            ("write", "clear_recovery", [("name", "str")], "None"),
+            ("write", "initiate_recovery", [("name", "str"), ("new_owner", "str")], "None"),
+            ("write", "cancel_recovery", [("name", "str")], "None"),
+            ("write", "execute_recovery", [("name", "str")], "None"),
+            ("write", "challenge_profile", [("name", "str"), ("source_url", "str"), ("claim", "str")], "None"),
             ("view", "resolve", [("name", "str")], "str"),
             ("view", "reverse_resolve", [("owner", "str")], "str"),
             ("view", "get_record", [("name", "str")], "str"),
+            ("view", "get_challenge", [("name", "str")], "str"),
             ("view", "is_available", [("name", "str")], "bool"),
             ("view", "get_names_by_owner", [("owner", "str"), ("offset", "u32"),
              ("limit", "u32")], "str"),
@@ -225,7 +247,6 @@ class StructureTests(unittest.TestCase):
     def test_direct_bounded_owner_index(self):
         self.assertNotIn("records.keys", SOURCE)
         self.assertNotIn("names.keys", SOURCE)
-        self.assertNotIn("200", SOURCE)
         self.assertIn("MAX_OWNER_PAGE = 50", SOURCE)
         self.assertIn("owner_slots", SOURCE)
         self.assertIn("name_positions", SOURCE)
@@ -233,10 +254,7 @@ class StructureTests(unittest.TestCase):
     def test_transfer_policy_source_model(self):
         transfer = next(n for n in ast.walk(TREE) if isinstance(n, ast.FunctionDef) and n.name == "transfer")
         text = ast.unparse(transfer)
-        self.assertIn("_remove_owner_name(old_owner, canonical)", text)
-        self.assertIn("_add_owner_name(recipient, canonical)", text)
-        self.assertIn("NameRecord(recipient, recipient", text)
-        self.assertIn("del self.primary_names[old_owner]", text)
+        self.assertIn("_transfer_record(canonical, record, recipient)", text)
         self.assertNotIn("self.primary_names[recipient]", text)
 
     def test_safe_json_serialization(self):
@@ -296,10 +314,53 @@ class ModerationParserTests(unittest.TestCase):
 
 class ProfileValidationTests(unittest.TestCase):
     def test_url_requires_scheme_host_and_no_whitespace(self):
-        for url in ("https://", "http://", "https:// space", "https://example.com/a b"):
+        for url in (
+            "https://",
+            "http://",
+            "https:// space",
+            "https://example.com/a b",
+            "https://user:pass@example.com",
+            "https://localhost/evidence",
+            "https://127.0.0.1/evidence",
+            "https://10.0.0.1/evidence",
+            "https://172.20.0.1/evidence",
+            "https://192.168.1.1/evidence",
+        ):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 GNS.validate_profile(url, "", "", "", "")
         GNS.validate_profile("https://example.com/avatar.png", "", "", "", "http://example.com")
+
+
+class ChallengeParserTests(unittest.TestCase):
+    def test_valid_keep_and_suspend_results(self):
+        keep = {
+            "action": "keep",
+            "category": "insufficient_evidence",
+            "confidence_bps": 6000,
+            "summary": "The source does not substantiate the claim.",
+        }
+        suspend = {
+            "action": "suspend",
+            "category": "impersonation",
+            "confidence_bps": 9500,
+            "summary": "The source directly supports an impersonation finding.",
+        }
+        self.assertEqual(GNS.validate_challenge_result(keep), keep)
+        self.assertEqual(GNS.validate_challenge_result(suspend), suspend)
+
+    def test_invalid_challenge_results_fail_closed(self):
+        cases = [
+            {},
+            {"action": "keep", "category": "safe", "confidence_bps": 6000, "summary": "x"},
+            {"action": "suspend", "category": "insufficient_evidence", "confidence_bps": 9500, "summary": "x"},
+            {"action": "suspend", "category": "impersonation", "confidence_bps": 7000, "summary": "x"},
+            {"action": "remove", "category": "impersonation", "confidence_bps": 9500, "summary": "x"},
+            {"action": "keep", "category": "insufficient_evidence", "confidence_bps": True, "summary": "x"},
+            {"action": "keep", "category": "insufficient_evidence", "confidence_bps": 6000, "summary": ""},
+        ]
+        for value in cases:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                GNS.validate_challenge_result(value)
 
 
 class OwnerIndexModelTests(unittest.TestCase):

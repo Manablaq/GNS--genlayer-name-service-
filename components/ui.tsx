@@ -191,6 +191,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   busy = false,
   destructive = false,
+  confirmDisabled = false,
   onConfirm,
   onClose,
 }: {
@@ -200,6 +201,7 @@ export function ConfirmDialog({
   confirmLabel?: string;
   busy?: boolean;
   destructive?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -254,7 +256,7 @@ export function ConfirmDialog({
           <button
             className="icon-button"
             onClick={onClose}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
             aria-label="Close dialog"
           >
             ×

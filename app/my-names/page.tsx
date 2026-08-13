@@ -30,6 +30,8 @@ interface NameRecord {
   twitter?: string;
   github?: string;
   website?: string;
+  status?: "active" | "suspended" | "expired";
+  expires_at?: string;
 }
 
 interface ReverseRecord {
@@ -223,6 +225,10 @@ function NameCard({
           <dt>Resolver</dt>
           <dd>{ownerResolver ? "Owner wallet" : "Custom address"}</dd>
         </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{record.status || "Unknown"}</dd>
+        </div>
       </dl>
       <div
         className="progress"
@@ -240,6 +246,10 @@ function NameCard({
         <Link
           href={`/send?name=${record.name}`}
           className="button ghost compact"
+          aria-disabled={record.status !== "active"}
+          onClick={(event) => {
+            if (record.status !== "active") event.preventDefault();
+          }}
         >
           Send
         </Link>

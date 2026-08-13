@@ -23,6 +23,7 @@ async function readContract(method: string, args: unknown[] = []) {
 
 export async function checkAvailability(name: string) { return readContract('is_available', [name]) }
 export async function getRecord(name: string) { return readContract('get_record', [name]) }
+export async function getChallenge(name: string) { return readContract('get_challenge', [name]) }
 export async function resolve(name: string) { return readContract('resolve', [name]) }
 export async function reverseResolve(address: string) { return readContract('reverse_resolve', [address]) }
 export async function getNamesByOwner(address: string, offset = 0, limit = 50) {

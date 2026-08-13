@@ -8,6 +8,7 @@ const READ_METHODS = {
   resolve: ['name'],
   reverse_resolve: ['address'],
   get_record: ['name'],
+  get_challenge: ['name'],
   is_available: ['name'],
   get_names_by_owner: ['address', 'offset', 'limit'],
   get_stats: [],
