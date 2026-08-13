@@ -1,9 +1,10 @@
 # GNS V3 review response
 
 This document maps the August 12, 2026 reviewer request to the corrected source
-in [`contracts/gns.py`](../contracts/gns.py). The correction is a new V3
-deployment candidate. The existing V2 Bradbury address is historical only and
-must not be submitted as evidence for these features.
+in [`contracts/gns.py`](../contracts/gns.py). The correction was deployed as V3
+at [`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f).
+The existing V2 Bradbury address is historical only and must not be submitted as
+evidence for these features.
 
 ## Requested: source-backed entitlement or challenge
 
@@ -55,9 +56,19 @@ npm test
 npm run build
 ```
 
-## Evidence after redeployment
+## Bradbury evidence
 
-Before resubmission, replace this release's pending deployment status with the
-new V3 Bradbury address, accepted deployment transaction, V3 smoke transactions,
-and the frontend deployment that points to the same new address. Do not use a
-source/repository commit as a substitute for matching deployed-contract evidence.
+The deployment receipt [`0x6c8e...d382`](https://explorer-bradbury.genlayer.com/tx/0x6c8e7476432b0245039a5661022b17710f15abb63290fde569ec6908ebe0d382)
+was accepted with return. Its source bytes match this repository's V3 contract
+exactly (SHA-256 `a1b65bbbec45e5bbebbba2354e73e66d3185f64060e511982cb80a853d289f4e`).
+
+The finalized challenge receipt [`0x215a...e20e`](https://explorer-bradbury.genlayer.com/tx/0x215a8137eb77b360801200c28d2f955d237943c4b63d25e07f9f95f07f7ce20e)
+records an accepted consensus outcome of `keep`, `insufficient_evidence`, and
+`confidence_bps=9500`, using the public repository README as the stored source.
+The record remained `active`. Registration, a post-registration moderated
+update, and recovery configuration were also exercised; their receipts are in
+[SUBMISSION_EVIDENCE.md](SUBMISSION_EVIDENCE.md).
+
+The remaining release step is a Vercel deployment from this source so the public
+application reads the same V3 address. Do not use a repository commit as a
+substitute for matching deployed-contract evidence.

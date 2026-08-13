@@ -1,54 +1,44 @@
-# Historical GNS V2 submission evidence
+# GNS V3 Bradbury evidence
 
-> This evidence applies only to the previously deployed V2 contract. The V3
-> remediation has not yet been deployed at the time of this document update;
-> do not use this address or receipt as evidence for V3 features. See
-> [REVIEW_RESPONSE_2026-08-12.md](REVIEW_RESPONSE_2026-08-12.md).
+This is the canonical evidence map for the V3 remediation release. It separates
+the verified V3 contract from the historical V2 deployment and does not claim
+that the existing Vercel site has switched until the V3-configured branch is
+merged and deployed.
 
-This document is the canonical evidence map for the active GNS project on
-GenLayer Bradbury Testnet. It intentionally separates active, reproducible
-evidence from retired historical deployments.
-
-## Active release
+## Verified V3 contract
 
 | Item | Public evidence |
 | --- | --- |
-| Live application | <https://dotgenapp.vercel.app> |
-| Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
-| Active resolver contract | <https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9> |
-| Deployment transaction | <https://explorer-bradbury.genlayer.com/tx/0xa38b409b62dcb45d40c7abdb1c728c5cfd5f8d5346b6366835ab53dc68bc7565> |
-| Successful registration | <https://explorer-bradbury.genlayer.com/tx/0xcb816e67df3ddbf310b804691f42cd3b8c4e4da455f8777a8f1a78c37035ba76> |
+| Contract | <https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f> |
+| Deployment | <https://explorer-bradbury.genlayer.com/tx/0x6c8e7476432b0245039a5661022b17710f15abb63290fde569ec6908ebe0d382> |
+| Source identity | V3 deployment source SHA-256: `a1b65bbbec45e5bbebbba2354e73e66d3185f64060e511982cb80a853d289f4e`; exact match with commit `9e50e96` / `contracts/gns.py`. |
+| Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-/tree/review-v3-remediation> |
 
-The active contract is `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`. The
-successful registration transaction registered `sundayalbert.gen` through
-GenLayer validator consensus. Contract reads then confirmed availability,
-forward resolution, complete record fields, reverse resolution, owner-index
-pagination, and total-name statistics.
+The deployment receipt is `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`.
 
-## What GNS does
+## On-chain V3 smoke evidence
 
-GNS is a non-custodial `.gen` resolver and public-profile registry. Users can
-register names, resolve names to wallet addresses, publish public profile data,
-choose a primary reverse name, and manage ownership. Registration moderation is
-performed with GenLayer validator consensus; the contract stores only the
-validated result. The direct-send experience resolves a name immediately before
-the connected wallet sends GEN directly to the resolved wallet address. The
-contract never receives, holds, or forwards payment funds.
+| Scenario | Evidence | Result |
+| --- | --- | --- |
+| Initial moderation and registration | <https://explorer-bradbury.genlayer.com/tx/0xbcd7da40ed7a24a5805269c5b35bfd91263b743b50514291b5e844fdc558d8cf> | Accepted registration of `gns-v3-bradbury-2026.gen`; profile approved as `safe`; lease is active. |
+| Post-registration profile moderation | <https://explorer-bradbury.genlayer.com/tx/0x4bfc837c2b2c452284352c10c9939a0be18e3558c0ba7272d9698889792c42b3> | Initial leader timeout was appealed. The final outcome accepted the profile update with category `safe`; the updated bio is persisted. |
+| Recovery configuration | <https://explorer-bradbury.genlayer.com/tx/0xe7df7288f06e99c6eb680af6a206d41559a948bfa06288bba099e6ec016c41a4> | Accepted setup of a distinct recovery address; the record exposes `recovery_configured: true` and no pending transfer. |
+| Source-backed challenge | <https://explorer-bradbury.genlayer.com/tx/0x215a8137eb77b360801200c28d2f955d237943c4b63d25e07f9f95f07f7ce20e> | **Finalized**, stored accepted. Validators independently reviewed the public source and bound `action=keep`, `category=insufficient_evidence`, and `confidence_bps=9500`; the record remains `active`. |
 
-## Accurate limits
+The challenge stored this public source URL:
 
-- A `.gen` record is not a legal name, ENS name, or proof of a person,
-  organization, identity, or ownership outside this contract.
-- This is a Bradbury testnet deployment; it is not presented as a mainnet
-  production system or a security audit.
-- The contract's active registration and read flow is demonstrated on-chain.
-  Profile updates, address updates, primary-name changes, and transfer have
-  automated coverage but are not represented as separately executed Bradbury
-  fixtures.
+<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/review-v3-remediation/README.md>
 
-## Retired address
+## Historical V2 deployment
 
-`0x15Ca354C73D7f8Ffa02a1e644dCDf41958a7b8A2` is a retired, defective legacy
-contract. It is not connected to the live application and must not be used as
-contract evidence for this project. Its retirement rationale is documented in
-[LEGACY_RETIREMENT.md](LEGACY_RETIREMENT.md).
+`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9` is the previous V2 resolver.
+It does not implement V3 expiry, release, recovery, post-registration
+moderation, or source-backed challenges. It remains historical evidence only and
+must not be used to support the V3 remediation claims.
+
+## Frontend release status
+
+The checked-in frontend configuration targets V3. The public application remains
+<https://dotgenapp.vercel.app> until this branch is merged and Vercel completes
+its production build. After that deployment, verify the live application against
+the V3 contract address before resubmitting the project.

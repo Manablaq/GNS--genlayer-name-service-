@@ -16,13 +16,15 @@ as a new Bradbury contract before the frontend is pointed at it.
 | --- | --- |
 | Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
 | Current public application | <https://dotgenapp.vercel.app> |
-| Previously deployed V2 contract | [`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9) |
-| V3 deployment | Pending. Do not represent the V2 address as V3 evidence. |
+| Verified V3 contract | [`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f) |
+| V3 deployment receipt | [`0x6c8e...d382`](https://explorer-bradbury.genlayer.com/tx/0x6c8e7476432b0245039a5661022b17710f15abb63290fde569ec6908ebe0d382), accepted with return |
+| V3 finalized source-backed challenge | [`0x215a...e20e`](https://explorer-bradbury.genlayer.com/tx/0x215a8137eb77b360801200c28d2f955d237943c4b63d25e07f9f95f07f7ce20e), stored accepted |
+| Previously deployed V2 contract | [`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9), historical only |
 
-The deployed V2 address remains documented as historical project evidence, but
-it does not implement this remediation. Deployment and frontend configuration
-instructions are below; replace the configured address only after the V3
-deployment transaction is accepted.
+The V3 contract was deployed as a new instance and its submitted bytes match
+the repository source at commit `9e50e96`. The checked-in frontend now targets
+V3, but the public Vercel application remains a V2 deployment until this branch
+is merged and Vercel completes its production build.
 
 ## Review remediation
 
@@ -115,13 +117,22 @@ contract.
 /Users/mralbert/.venvs/genvm-lint/bin/genvm-lint check contracts/gns.py
 ```
 
-## Deployment sequence
+## Verified Bradbury smoke evidence
 
-1. In GenLayer Studio, load `contracts/gns.py` and deploy a **new** instance on Bradbury. Do not upgrade the prior V2 instance.
-2. Wait for an accepted deployment receipt and record the new address and transaction hash.
-3. Run the contract smoke sequence in Studio: register a safe name, update its profile, configure recovery, submit one source-backed challenge, and read `get_record` and `get_challenge`.
-4. Replace `CONTRACT_ADDRESS` in `lib/config.ts` with the new V3 address, update the public evidence documents with the new accepted receipt, then deploy the frontend.
-5. Re-run the frontend transaction smoke checks against that V3 address. The old deployment must remain labelled V2/history.
+| Capability | Transaction or read | Verified outcome |
+| --- | --- | --- |
+| Deployment/source identity | [`0x6c8e...d382`](https://explorer-bradbury.genlayer.com/tx/0x6c8e7476432b0245039a5661022b17710f15abb63290fde569ec6908ebe0d382) | `ACCEPTED`, `FINISHED_WITH_RETURN`; deployment source SHA-256 is `a1b65bbbec45e5bbebbba2354e73e66d3185f64060e511982cb80a853d289f4e`, matching this repository. |
+| Registration moderation | [`0xbcd7...d8cf`](https://explorer-bradbury.genlayer.com/tx/0xbcd7da40ed7a24a5805269c5b35bfd91263b743b50514291b5e844fdc558d8cf) | `gns-v3-bradbury-2026.gen` registered as `active`; consensus approved the initial profile as `safe`. |
+| Post-registration moderation | [`0x4bfc...42b3`](https://explorer-bradbury.genlayer.com/tx/0x4bfc837c2b2c452284352c10c9939a0be18e3558c0ba7272d9698889792c42b3) | An initial leader timeout was appealed and the profile update was accepted; the updated bio is stored. |
+| Recovery configuration | [`0xe7df...41a4`](https://explorer-bradbury.genlayer.com/tx/0xe7df7288f06e99c6eb680af6a206d41559a948bfa06288bba099e6ec016c41a4) | Recovery address is stored and no recovery transfer is pending. |
+| Source-backed challenge | [`0x215a...e20e`](https://explorer-bradbury.genlayer.com/tx/0x215a8137eb77b360801200c28d2f955d237943c4b63d25e07f9f95f07f7ce20e) | **Finalized** with stored accepted outcome: `keep`, `insufficient_evidence`, confidence `9500`; the on-chain record remains `active`. |
+
+## Release sequence
+
+1. Review and merge this branch after the checks below pass.
+2. Let Vercel build the merged source, which targets the verified V3 address in `lib/config.ts`.
+3. Verify the deployed frontend reads this V3 contract and performs one UI transaction/read smoke test.
+4. Keep the prior V2 address labelled as historical evidence only.
 
 ## Limits
 
