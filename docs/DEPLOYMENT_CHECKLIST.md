@@ -27,6 +27,17 @@ will be pasted or supplied to GenLayer Studio.
 
 ## 2. Deploy a new instance
 
+Completed for the current release:
+
+- Contract: [`0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`](https://explorer-bradbury.genlayer.com/address/0x676561784d0864EaFF87F281bA1Af9E2c2e9F090)
+- Deployment: [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67)
+- Result: `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`
+- Source identity: byte-identical 49,106-byte payload; verified SHA-256
+  `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2`
+
+The steps below document the completed identity gate and remain the required
+procedure for any later deployment:
+
 1. Deploy `contracts/gns.py` to Bradbury as a new contract.
 2. Wait for `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`.
 3. Download or inspect the deployment calldata.

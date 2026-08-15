@@ -1,23 +1,25 @@
 # GNS V3 submission evidence
 
 This file is the canonical evidence ledger. It separates locally verified
-release-candidate behavior from historical Bradbury receipts so reviewers can
+release behavior from historical Bradbury receipts so reviewers can
 identify exactly which source each claim supports.
 
-## Release candidate
+## Current release
 
 | Item | Value |
 | --- | --- |
 | Source | [`contracts/gns.py`](../contracts/gns.py) |
 | SHA-256 | `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2` |
-| Matching Bradbury contract | **Pending** |
-| Matching deployment receipt | **Pending** |
-| Matching public application | **Pending** |
+| Matching Bradbury contract | [`0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`](https://explorer-bradbury.genlayer.com/address/0x676561784d0864EaFF87F281bA1Af9E2c2e9F090) |
+| Matching deployment receipt | [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67) |
+| Deployment result | `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN` |
+| Deployed source identity | Byte-identical, 49,106 bytes; SHA-256 matches this release |
+| Matching public application | **Pending redeployment and verification** |
 | Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
 
-Do not resubmit while any matching item above is pending. The deployment
-calldata must contain this exact source, and the frontend configuration must
-point to that accepted contract.
+Do not resubmit while the application binding or any required regression row
+is pending. The deployment calldata contains this exact source, and the
+checked-in frontend configuration points to the accepted contract.
 
 ## Required Bradbury regression matrix
 
@@ -25,7 +27,7 @@ Record finalized explorer links and post-state reads for every row:
 
 | Scenario | Required proof | Status |
 | --- | --- | --- |
-| Deployment identity | Accepted deployment; calldata SHA equals the release-candidate SHA | Pending |
+| Deployment identity | Accepted deployment; calldata contains the byte-identical release source and its SHA equals the repository SHA | Verified: [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67) |
 | Initial registration | Active record after moderated registration | Pending |
 | Source-backed suspension | `get_record.status == "suspended"`; `get_challenge.action == "suspend"`; source, claim, confidence, and challenged profile are stored | Pending |
 | Generic/no-op bypass rejection | `update_profile` and unchanged `reinstate_profile` fail; both reads remain unchanged | Pending |

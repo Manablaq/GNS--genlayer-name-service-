@@ -92,13 +92,18 @@ blocking, release disabling, and matching source URL validation.
 
 ## Deployment truth
 
-The release-candidate source is [`contracts/gns.py`](../contracts/gns.py),
+The release source is [`contracts/gns.py`](../contracts/gns.py),
 SHA-256 `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2`.
-It is **not yet deployed**. Contract `0x337105406bca6EcAf55bd90F6e65A9e041256A8a`
+It is deployed at
+[`0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`](https://explorer-bradbury.genlayer.com/address/0x676561784d0864EaFF87F281bA1Af9E2c2e9F090)
+by accepted transaction
+[`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67).
+The deployment payload contains the byte-identical 49,106-byte source and
+matches the repository SHA above. Contract `0x337105406bca6EcAf55bd90F6e65A9e041256A8a`
 and deployment `0x79db...a28e` predate the tombstone and source-boundary
-hardening and are retained only as historical evidence.
+hardening and remain historical only.
 
-Before resubmission, deploy this exact source, verify the calldata hash, run the
-Bradbury regression matrix in [`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md),
-update the frontend to the new address, deploy the frontend, and record the
-finalized receipts in [`SUBMISSION_EVIDENCE.md`](SUBMISSION_EVIDENCE.md).
+Before resubmission, run the Bradbury regression matrix in
+[`DEPLOYMENT_CHECKLIST.md`](DEPLOYMENT_CHECKLIST.md), redeploy and verify the
+frontend, and record finalized lifecycle receipts in
+[`SUBMISSION_EVIDENCE.md`](SUBMISSION_EVIDENCE.md).

@@ -5,11 +5,12 @@ can register a human-readable name, publish a bounded profile, resolve it to a
 wallet, configure delayed recovery, and send GEN directly wallet-to-wallet.
 The registry never holds or forwards payment funds.
 
-This repository contains the V3 remediation candidate for the August 15, 2026
-review. The candidate closes both the reported no-op profile-update bypass and
+This repository contains the V3 remediation release for the August 15, 2026
+review. The release closes both the reported no-op profile-update bypass and
 the related release/re-registration bypass. It has passed the local contract,
 Direct Mode, frontend, build, and GenVM verification gates documented below.
-It must still be deployed as a new Bradbury instance before resubmission.
+Its byte-identical source is deployed on Bradbury; the full on-chain lifecycle
+regression remains required before resubmission.
 
 ## Release status
 
@@ -17,16 +18,19 @@ It must still be deployed as a new Bradbury instance before resubmission.
 | --- | --- |
 | Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
 | Public application | <https://dotgenapp.vercel.app> |
-| Release-candidate source | [`contracts/gns.py`](contracts/gns.py) |
-| Release-candidate source SHA-256 | `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2` |
-| Matching Bradbury deployment | **Pending** |
+| Release source | [`contracts/gns.py`](contracts/gns.py) |
+| Release source SHA-256 | `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2` |
+| Matching Bradbury contract | [`0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`](https://explorer-bradbury.genlayer.com/address/0x676561784d0864EaFF87F281bA1Af9E2c2e9F090) |
+| Matching deployment | [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67), `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN` |
+| On-chain regression matrix | **Pending** |
+| Production frontend binding | **Pending redeployment** |
 | Prior follow-up contract | [`0x337105406bca6EcAf55bd90F6e65A9e041256A8a`](https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a), historical only |
 | Prior follow-up deployment | [`0x79db...a28e`](https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e), historical only |
 | Original V3 contract | [`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f), historical only |
 
-The checked-in frontend intentionally continues to target `0x337...` until a
-new deployment is accepted and its source identity is verified. Do not cite
-that address as evidence for the current release candidate.
+The checked-in frontend targets the matching `0x6765...F090` deployment. The
+public application must be redeployed and verified before it is cited as
+matching evidence.
 
 ## What the review changed
 
@@ -36,7 +40,7 @@ name without rebutting the stored evidence. The completed audit also found a
 second route: deleting an expired suspended record could otherwise make the
 name available for ordinary source-free registration.
 
-The release candidate enforces one lifecycle invariant:
+The release enforces one lifecycle invariant:
 
 > A `suspend` finding remains attached to the name until changed profile data
 > passes an independent review of the original source and claim.
