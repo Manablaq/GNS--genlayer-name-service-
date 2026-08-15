@@ -333,3 +333,101 @@ def test_reinstatement_that_does_not_rebut_source_preserves_suspension(
 
     assert record(contract, "profile-name")["status"] == "suspended"
     assert json.loads(contract.get_challenge("profile-name"))["action"] == "suspend"
+
+
+def test_release_cannot_erase_suspension_or_enable_source_free_reregistration(
+    direct_vm, direct_deploy
+):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    claim = "The profile impersonates this source."
+    contract.register("profile-name", "", "Impersonating profile", "", "", "")
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source documents the impersonation."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    contract.challenge_profile("profile-name", EVIDENCE_URL, claim)
+    assert direct_vm.run_validator() is True
+
+    with direct_vm.expect_revert(
+        "suspended profile requires source-backed reinstatement before release"
+    ):
+        contract.release("profile-name")
+
+    suspended = record(contract, "profile-name")
+    challenge = json.loads(contract.get_challenge("profile-name"))
+    assert suspended["found"] is True
+    assert suspended["status"] == "suspended"
+    assert challenge["action"] == "suspend"
+    assert challenge["challenged_profile"]["bio"] == "Impersonating profile"
+
+
+def test_released_suspension_can_only_be_reregistered_after_source_backed_rebuttal(
+    direct_vm, direct_deploy
+):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    claim = "The profile impersonates this source."
+    contract.register("profile-name", "", "Impersonating profile", "", "", "")
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source documents the impersonation."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    contract.challenge_profile("profile-name", EVIDENCE_URL, claim)
+    assert direct_vm.run_validator() is True
+    expires_at = int(record(contract, "profile-name")["expires_at"])
+    warp_after(direct_vm, expires_at + 1)
+    contract.release_expired("profile-name")
+
+    assert record(contract, "profile-name")["found"] is False
+    assert contract.is_available("profile-name") is True
+    tombstone = json.loads(contract.get_challenge("profile-name"))
+    assert tombstone["action"] == "suspend"
+    assert tombstone["source_url"] == EVIDENCE_URL
+    assert tombstone["claim"] == claim
+    assert tombstone["challenged_profile"]["bio"] == "Impersonating profile"
+
+    with direct_vm.expect_revert(
+        "registration requires changed profile data after suspension"
+    ):
+        contract.register(
+            "profile-name", "", "Impersonating profile", "", "", ""
+        )
+
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source still documents the violation."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    with direct_vm.expect_revert("registration remains blocked by prior challenge"):
+        contract.register(
+            "profile-name", "", "Changed but still impersonating profile", "", "", ""
+        )
+    assert direct_vm.run_validator() is True
+    assert record(contract, "profile-name")["found"] is False
+    unchanged_tombstone = json.loads(contract.get_challenge("profile-name"))
+    assert unchanged_tombstone["action"] == "suspend"
+    assert unchanged_tombstone["challenged_profile"]["bio"] == "Impersonating profile"
+
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source documents only the old profile."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_KEEP)
+    contract.register(
+        "profile-name", "", "Independent software builder", "", "", ""
+    )
+    assert direct_vm.run_validator() is True
+
+    restored = record(contract, "profile-name")
+    challenge = json.loads(contract.get_challenge("profile-name"))
+    assert restored["status"] == "active"
+    assert restored["bio"] == "Independent software builder"
+    assert challenge["action"] == "keep"
+    assert challenge["source_url"] == EVIDENCE_URL
+    assert challenge["claim"] == claim
+    assert challenge["challenged_profile"]["bio"] == "Independent software builder"

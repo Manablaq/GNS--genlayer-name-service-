@@ -3,7 +3,12 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
-import { checkAvailability, getRecord, getStats } from "@/lib/genlayer";
+import {
+  checkAvailability,
+  getChallenge,
+  getRecord,
+  getStats,
+} from "@/lib/genlayer";
 import { validateName } from "@/lib/domain";
 import { BRADBURY_EXPLORER_URL, CONTRACT_ADDRESS } from "@/lib/config";
 import { RegisterModal } from "@/components/RegisterModal";
@@ -20,6 +25,7 @@ type SearchState =
   | "idle"
   | "loading"
   | "available"
+  | "restricted"
   | "registered"
   | "invalid"
   | "reserved"
@@ -27,6 +33,19 @@ type SearchState =
 interface SearchRecord {
   found?: boolean;
   resolved?: string;
+}
+interface SearchProfile {
+  avatar: string;
+  bio: string;
+  twitter: string;
+  github: string;
+  website: string;
+}
+interface SearchChallenge {
+  found?: boolean;
+  action?: "keep" | "suspend";
+  category?: string;
+  challenged_profile?: Partial<SearchProfile>;
 }
 const RECENT = "gns:recent-searches:v1";
 function loadRecent() {
@@ -52,6 +71,7 @@ export default function HomePage() {
   const [input, setInput] = useState(() => query.get("q") || "");
   const [state, setState] = useState<SearchState>("idle");
   const [record, setRecord] = useState<SearchRecord | null>(null);
+  const [challenge, setChallenge] = useState<SearchChallenge | null>(null);
   const [error, setError] = useState("");
   const [recent, setRecent] = useState<string[]>(loadRecent);
   const [register, setRegister] = useState(false);
@@ -68,10 +88,14 @@ export default function HomePage() {
     const timer = setTimeout(
       async () => {
         if (!input) {
+          setRecord(null);
+          setChallenge(null);
           setState("idle");
           return;
         }
         if (!validation.valid) {
+          setRecord(null);
+          setChallenge(null);
           setState(validation.reserved ? "reserved" : "invalid");
           setError(validation.reason);
           return;
@@ -82,13 +106,23 @@ export default function HomePage() {
           if (id !== request.current) return;
           if (available === true) {
             setRecord(null);
-            setState("available");
+            const challengeValue = (await getChallenge(
+              validation.canonical,
+            )) as SearchChallenge;
+            if (id !== request.current) return;
+            setChallenge(challengeValue);
+            setState(
+              challengeValue?.found && challengeValue.action === "suspend"
+                ? "restricted"
+                : "available",
+            );
           } else {
             const value = (await getRecord(
               validation.canonical,
             )) as SearchRecord;
             if (id !== request.current) return;
             setRecord(value);
+            setChallenge(null);
             setState(value?.found ? "registered" : "error");
           }
         } catch (e) {
@@ -119,7 +153,7 @@ export default function HomePage() {
     remember();
     if (!validation.valid) return;
     if (state === "registered") router.push(`/name/${validation.canonical}`);
-    if (state === "available") {
+    if (state === "available" || state === "restricted") {
       if (isConnected) setRegister(true);
       else openConnectModal?.();
     }
@@ -175,6 +209,10 @@ export default function HomePage() {
                         ? isConnected
                           ? "Claim name"
                           : "Connect to claim"
+                        : state === "restricted"
+                          ? isConnected
+                            ? "Propose remediation"
+                            : "Connect to remediate"
                         : "Search"}
                 </button>
               </div>
@@ -190,6 +228,15 @@ export default function HomePage() {
                     <StatusBadge tone="success">Available</StatusBadge>
                     <strong>{validation.display}</strong>
                     <span>Ready for registration.</span>
+                  </>
+                )}
+                {state === "restricted" && (
+                  <>
+                    <StatusBadge tone="warning">Moderation hold</StatusBadge>
+                    <strong>{validation.display}</strong>
+                    <span>
+                      A changed profile and source-backed review are required.
+                    </span>
                   </>
                 )}
                 {state === "registered" && (
@@ -334,8 +381,8 @@ export default function HomePage() {
           </article>
           <article>
             <span>Public methods</span>
-            <strong>11</strong>
-            <small>5 writes · 6 views</small>
+            <strong>22</strong>
+            <small>15 writes · 7 views</small>
           </article>
         </div>
         <ExternalLink
@@ -394,6 +441,8 @@ export default function HomePage() {
       {register && validation.valid && (
         <RegisterModal
           name={validation.canonical}
+          sourceBackedReview={state === "restricted"}
+          challengedProfile={challenge?.challenged_profile}
           onClose={() => setRegister(false)}
         />
       )}

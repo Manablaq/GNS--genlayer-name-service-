@@ -4,6 +4,7 @@ import { useAccount } from "wagmi";
 import {
   PROFILE_LIMITS,
   normalizeProfile,
+  profilesEqual,
   safeExternalUrl,
 } from "@/lib/domain";
 import { writeGns } from "@/lib/wallet";
@@ -11,11 +12,16 @@ import { useTransactions } from "./TransactionProvider";
 import { registrationDraftKey } from "@/lib/transactions";
 import { InlineNotice } from "./ui";
 const empty = { avatar: "", bio: "", twitter: "", github: "", website: "" };
+type Profile = typeof empty;
 export function RegisterModal({
   name,
+  sourceBackedReview = false,
+  challengedProfile = null,
   onClose,
 }: {
   name: string;
+  sourceBackedReview?: boolean;
+  challengedProfile?: Partial<Profile> | null;
   onClose: () => void;
 }) {
   const { address } = useAccount();
@@ -84,8 +90,11 @@ export function RegisterModal({
   const invalidSocial = [normalized.twitter, normalized.github].some(
     (v) => v && !/^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$/.test(v),
   );
+  const unchangedFromChallenge = Boolean(
+    sourceBackedReview && profilesEqual(normalized, challengedProfile),
+  );
   async function submit() {
-    if (!address) return;
+    if (!address || invalidUrl || invalidSocial || unchangedFromChallenge) return;
     setBusy(true);
     setError("");
     try {
@@ -142,7 +151,9 @@ export function RegisterModal({
       >
         <div className="dialog-head">
           <div>
-            <p className="eyebrow">Claim identity · Step {step + 1} of 3</p>
+            <p className="eyebrow">
+              {sourceBackedReview ? "Remediate identity" : "Claim identity"} · Step {step + 1} of 3
+            </p>
             <h2 id="register-title">{display}</h2>
           </div>
           <button
@@ -161,7 +172,7 @@ export function RegisterModal({
         </div>
         {step === 0 && (
           <div className="dialog-body">
-            <h3>Confirm your name</h3>
+            <h3>{sourceBackedReview ? "Confirm remediation" : "Confirm your name"}</h3>
             <p>
               You will own this resolver record from the connected wallet.
               Registration is moderated for deceptive or abusive identity
@@ -174,6 +185,16 @@ export function RegisterModal({
               AI-assisted consensus evaluates the name against registry policy.
               Approval does not verify who you are or endorse the profile.
             </InlineNotice>
+            {sourceBackedReview && (
+              <InlineNotice
+                tone="warning"
+                title="A prior suspension remains attached"
+              >
+                The proposed profile must differ from the challenged snapshot.
+                Validators will independently fetch the stored evidence and
+                reapply its policy before this name can become active.
+              </InlineNotice>
+            )}
           </div>
         )}
         {step === 1 && (
@@ -228,6 +249,12 @@ export function RegisterModal({
                 hyphens.
               </p>
             )}
+            {unchangedFromChallenge && (
+              <p className="field-error">
+                Change at least one profile field. An unchanged suspended
+                profile cannot be registered again.
+              </p>
+            )}
           </div>
         )}
         {step === 2 && (
@@ -264,6 +291,13 @@ export function RegisterModal({
               resulting owner record are checked globally while you continue
               using the app.
             </p>
+            {sourceBackedReview && (
+              <InlineNotice tone="warning" title="Source-backed review">
+                This is not an ordinary registration. The contract binds the
+                result to the prior evidence, challenged profile, proposed
+                profile, action, category, and exact confidence value.
+              </InlineNotice>
+            )}
             {error && (
               <InlineNotice tone="error" title="Submission not completed">
                 {error}
@@ -289,7 +323,10 @@ export function RegisterModal({
             <button
               className="button primary"
               onClick={() => setStep(step + 1)}
-              disabled={step === 1 && !!(invalidUrl || invalidSocial)}
+              disabled={
+                step === 1 &&
+                !!(invalidUrl || invalidSocial || unchangedFromChallenge)
+              }
             >
               Continue
             </button>
@@ -297,9 +334,13 @@ export function RegisterModal({
             <button
               className="button primary"
               onClick={submit}
-              disabled={busy || !address}
+              disabled={busy || !address || unchangedFromChallenge}
             >
-              {busy ? "Confirm in wallet…" : "Sign registration"}
+              {busy
+                ? "Confirm in wallet…"
+                : sourceBackedReview
+                  ? "Sign remediation request"
+                  : "Sign registration"}
             </button>
           )}
         </div>

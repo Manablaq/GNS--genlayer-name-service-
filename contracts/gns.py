@@ -132,6 +132,29 @@ def _validate_http_url(value: str, field: str, max_length: int) -> str:
     return value
 
 
+def validate_source_url(value: str) -> str:
+    value = _validate_http_url(value, "challenge source", MAX_SOURCE_URL_LENGTH)
+    if not value.startswith("https://"):
+        raise ValueError("invalid URL: challenge source must use HTTPS")
+
+    authority = re.split(r"[/#?]", value[8:], maxsplit=1)[0]
+    if authority.count(":") > 1 or authority.startswith("["):
+        raise ValueError("invalid URL: challenge source must use a DNS hostname")
+    authority_parts = authority.rsplit(":", 1)
+    hostname = authority_parts[0].lower()
+    if len(authority_parts) == 2:
+        port = authority_parts[1]
+        if not port.isdigit() or not 0 < int(port) <= 65535:
+            raise ValueError("invalid URL: challenge source port is invalid")
+    if "." not in hostname or re.fullmatch(
+        r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+        r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",
+        hostname,
+    ) is None:
+        raise ValueError("invalid URL: challenge source must use a DNS hostname")
+    return value
+
+
 def validate_profile(
     avatar: str, bio: str, twitter: str, github: str, website: str
 ) -> tuple[str, str, str, str, str]:
@@ -295,6 +318,7 @@ class ChallengeRecord:
     challenger: Address
     source_url: str
     claim: str
+    profile_snapshot: str
     action: str
     category: str
     confidence_bps: u32
@@ -330,7 +354,7 @@ class GenLayerNameServiceV3(gl.Contract):
 
     def _source_url(self, value: str) -> str:
         try:
-            return _validate_http_url(value, "challenge source", MAX_SOURCE_URL_LENGTH)
+            return validate_source_url(value)
         except ValueError as error:
             raise gl.vm.UserError(str(error))
 
@@ -429,7 +453,8 @@ class GenLayerNameServiceV3(gl.Contract):
         self._remove_owner_name(record.owner, canonical)
         self._clear_primary(record.owner, canonical)
         del self.records[canonical]
-        if self.challenges.get(canonical, None) is not None:
+        challenge = self.challenges.get(canonical, None)
+        if challenge is not None and challenge.action != CHALLENGE_SUSPEND:
             del self.challenges[canonical]
         self.total_names = u32(self.total_names - 1)
 
@@ -466,6 +491,112 @@ class GenLayerNameServiceV3(gl.Contract):
         )
         if self.records.get(canonical, None) is not None:
             raise gl.vm.UserError("duplicate registration")
+        prior_challenge = self.challenges.get(canonical, None)
+        if prior_challenge is not None and prior_challenge.action == CHALLENGE_SUSPEND:
+            source_url = prior_challenge.source_url
+            claim = prior_challenge.claim
+            proposed_profile_snapshot = profile_payload(
+                canonical, avatar, bio, twitter, github, website
+            )
+            if proposed_profile_snapshot == prior_challenge.profile_snapshot:
+                raise gl.vm.UserError(
+                    "registration requires changed profile data after suspension"
+                )
+            payload = json.dumps(
+                {
+                    "canonical_name": canonical,
+                    "prior_challenge": {
+                        "claim": claim,
+                        "category": prior_challenge.category,
+                        "source_url": source_url,
+                        "challenged_profile": json.loads(
+                            prior_challenge.profile_snapshot
+                        )["profile"],
+                    },
+                    "proposed_profile": {
+                        "avatar": avatar,
+                        "bio": bio,
+                        "twitter": twitter,
+                        "github": github,
+                        "website": website,
+                    },
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+
+            def prior_review_once():
+                response = gl.nondet.web.get(source_url)
+                if response.status < 200 or response.status >= 300:
+                    raise gl.vm.UserError("challenge source returned a non-success status")
+                if response.body is None:
+                    raise gl.vm.UserError("challenge source returned an empty body")
+                try:
+                    source_text = response.body.decode("utf-8")[:MAX_SOURCE_CHARS]
+                except UnicodeDecodeError:
+                    raise gl.vm.UserError("challenge source is not UTF-8 text")
+                return gl.nondet.exec_prompt(
+                    reinstatement_prompt(payload, source_text), response_format="json"
+                )
+
+            def prior_validator_fn(leader_result):
+                try:
+                    if not isinstance(leader_result, gl.vm.Return):
+                        return False
+                    leader = validate_challenge_result(leader_result.calldata)
+                    validator = validate_challenge_result(prior_review_once())
+                    return (
+                        leader["action"] == validator["action"]
+                        and leader["category"] == validator["category"]
+                        and leader["confidence_bps"] == validator["confidence_bps"]
+                    )
+                except (TypeError, ValueError, UnicodeDecodeError):
+                    return False
+
+            try:
+                result = validate_challenge_result(
+                    gl.vm.run_nondet_unsafe(prior_review_once, prior_validator_fn)
+                )
+            except (TypeError, ValueError):
+                raise gl.vm.UserError("invalid prior-challenge result")
+            if result["action"] != CHALLENGE_KEEP:
+                raise gl.vm.UserError(
+                    "registration remains blocked by prior challenge: " + result["category"]
+                )
+
+            owner = gl.message.sender_address
+            now = self._now()
+            self.records[canonical] = NameRecord(
+                owner,
+                owner,
+                avatar,
+                bio,
+                twitter,
+                github,
+                website,
+                u256(int(now) + NAME_LEASE_SECONDS),
+                self._zero_address(),
+                self._zero_address(),
+                u256(0),
+                RECORD_ACTIVE,
+            )
+            self.challenges[canonical] = ChallengeRecord(
+                prior_challenge.challenger,
+                source_url,
+                claim,
+                proposed_profile_snapshot,
+                result["action"],
+                result["category"],
+                u32(result["confidence_bps"]),
+                result["summary"],
+                now,
+            )
+            self._add_owner_name(owner, canonical)
+            self.total_names = u32(self.total_names + 1)
+            if self.primary_names.get(owner, "") == "":
+                self.primary_names[owner] = canonical
+            return
+
         payload = profile_payload(canonical, avatar, bio, twitter, github, website)
 
         def leader_fn():
@@ -608,13 +739,10 @@ class GenLayerNameServiceV3(gl.Contract):
         challenge = self.challenges.get(canonical, None)
         if challenge is None or challenge.action != CHALLENGE_SUSPEND:
             raise gl.vm.UserError("suspension challenge is missing or inconsistent")
-        if (
-            avatar == record.avatar
-            and bio == record.bio
-            and twitter == record.twitter
-            and github == record.github
-            and website == record.website
-        ):
+        proposed_profile_snapshot = profile_payload(
+            canonical, avatar, bio, twitter, github, website
+        )
+        if proposed_profile_snapshot == challenge.profile_snapshot:
             raise gl.vm.UserError("reinstatement requires changed profile data")
 
         source_url = challenge.source_url
@@ -626,6 +754,9 @@ class GenLayerNameServiceV3(gl.Contract):
                     "claim": claim,
                     "category": challenge.category,
                     "source_url": source_url,
+                    "challenged_profile": json.loads(challenge.profile_snapshot)[
+                        "profile"
+                    ],
                 },
                 "proposed_profile": {
                     "avatar": avatar,
@@ -696,6 +827,7 @@ class GenLayerNameServiceV3(gl.Contract):
             challenge.challenger,
             source_url,
             claim,
+            proposed_profile_snapshot,
             result["action"],
             result["category"],
             u32(result["confidence_bps"]),
@@ -783,6 +915,10 @@ class GenLayerNameServiceV3(gl.Contract):
         record = self.records.get(canonical, None)
         if record is None or record.owner != gl.message.sender_address:
             raise gl.vm.UserError("unauthorized release")
+        if self._record_status(record, self._now()) == RECORD_SUSPENDED:
+            raise gl.vm.UserError(
+                "suspended profile requires source-backed reinstatement before release"
+            )
         self._release_record(canonical, record)
 
     @gl.public.write
@@ -918,6 +1054,14 @@ class GenLayerNameServiceV3(gl.Contract):
         if record is None:
             raise gl.vm.UserError("name is not registered")
         self._require_active(record, now)
+        challenged_profile_snapshot = profile_payload(
+            canonical,
+            record.avatar,
+            record.bio,
+            record.twitter,
+            record.github,
+            record.website,
+        )
         payload = json.dumps(
             {
                 "canonical_name": canonical,
@@ -974,6 +1118,7 @@ class GenLayerNameServiceV3(gl.Contract):
             gl.message.sender_address,
             source_url,
             claim,
+            challenged_profile_snapshot,
             result["action"],
             result["category"],
             u32(result["confidence_bps"]),
@@ -1083,6 +1228,9 @@ class GenLayerNameServiceV3(gl.Contract):
                 "challenger": str(challenge.challenger),
                 "source_url": challenge.source_url,
                 "claim": challenge.claim,
+                "challenged_profile": json.loads(challenge.profile_snapshot)[
+                    "profile"
+                ],
                 "action": challenge.action,
                 "category": challenge.category,
                 "confidence_bps": int(challenge.confidence_bps),

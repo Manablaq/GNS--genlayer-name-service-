@@ -1,0 +1,82 @@
+# GNS release and deployment checklist
+
+This checklist prevents source, deployment, frontend, and evidence drift. Do
+not skip a gate and do not replace a failed gate with narrative evidence.
+
+## 1. Freeze and verify source
+
+```bash
+npm run lint
+npm test
+python3 -m unittest tests/test_gns_v2.py -v
+.venv/bin/pytest tests/test_gns_v2_direct.py -q
+npm run build -- --webpack
+npm audit --omit=dev
+GENVM_VERSION=v0.3.0-rc4 \
+  /Users/mralbert/.venvs/genvm-lint/bin/genvm-lint check contracts/gns.py
+git diff --check
+shasum -a 256 contracts/gns.py
+git status --short
+```
+
+Expected source SHA for this candidate:
+`fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2`.
+
+Commit and push before deployment. The commit must contain the same source that
+will be pasted or supplied to GenLayer Studio.
+
+## 2. Deploy a new instance
+
+1. Deploy `contracts/gns.py` to Bradbury as a new contract.
+2. Wait for `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`.
+3. Download or inspect the deployment calldata.
+4. Verify the deployed source is byte-identical and has the expected SHA.
+5. Record the contract and transaction links in `SUBMISSION_EVIDENCE.md`.
+
+Do not upgrade or reuse `0x337...`; it predates this release candidate.
+
+## 3. Run the on-chain regression
+
+Use a fresh name and a stable public HTTPS evidence fixture.
+
+1. Register a profile and verify `active`.
+2. Challenge it with source material that supports suspension.
+3. Verify the challenge stores `action=suspend`, the exact source and claim,
+   confidence, and the challenged profile snapshot.
+4. Attempt generic `update_profile`; verify rejection and unchanged reads.
+5. Attempt unchanged `reinstate_profile`; verify rejection and unchanged reads.
+6. Attempt a changed profile that the evidence still contradicts; verify it
+   remains suspended with no partial write.
+7. Submit a changed profile that rebuts the finding; verify exact `keep`
+   consensus and consistent active record/challenge reads.
+8. On a second suspended name, verify owner `release` fails.
+9. After expiry, call `release_expired`; verify the record is gone but the
+   `suspend` challenge remains.
+10. Verify unchanged and still-violating re-registration fail, then verify a
+    changed rebuttal succeeds only after independent source-backed review.
+
+Wait for finalization before using any receipt in a submission.
+
+## 4. Bind the frontend
+
+1. Set `CONTRACT_ADDRESS` in `lib/config.ts` to the new accepted address.
+2. Run lint, tests, the dependency audit, and the production webpack build
+   again.
+3. Commit and push the address update.
+4. Deploy the public frontend.
+5. Verify registration, challenge, remediation, release guard, reads, wallet
+   writes, and transaction links against the new address.
+6. Confirm the live app visibly reports that address.
+
+## 5. Final evidence audit
+
+- Repository source SHA equals deployment source SHA.
+- Repository branch and commit are public.
+- Every claimed transaction is finalized.
+- Every transaction link targets the new contract.
+- Frontend and explorer links are live without authentication.
+- Test report distinguishes local verification from on-chain evidence.
+- Historical deployments are labeled historical.
+- No placeholder, private, local, or HTTP evidence source is cited.
+- The submission describes limitations without claiming identity proof or a
+  production security audit.

@@ -9,7 +9,9 @@ evidence for these features.
 ## Requested: source-backed entitlement or challenge
 
 `challenge_profile(name, source_url, claim)` provides a public challenge path.
-It requires a credential-free public HTTP(S) URL and a specific, bounded claim.
+That historical V3 source accepted credential-free public HTTP(S) URLs. The
+current release candidate tightens challenge evidence to public HTTPS URLs with
+DNS hostnames; see `REVIEW_RESPONSE_2026-08-15.md`.
 The nested `review_once` function fetches the source inside the nondeterministic
 section, rejects non-success or non-text responses, truncates the evidence, and
 evaluates the registered profile policy. The leader result and validator result

@@ -14,9 +14,9 @@ unverified.
 - First GNS V2 deployment: `0xE97158b59B7D80F2c911b90906690B3B57722eb8`.
   Two registrations ended in `LEADER_TIMEOUT`; this deployment is superseded and
   was never registration-verified.
-- Final corrected GNS V2 deployment:
-  `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`. This is the active deployment and
-  is deployment-, source-, registration-, and read-verified.
+- Final GNS V2 deployment (historical):
+  `0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`. It was deployment-, source-,
+  registration-, and read-verified for V2 and is now superseded by V3 work.
 
 ## Bradbury nondeterministic callable A/B
 

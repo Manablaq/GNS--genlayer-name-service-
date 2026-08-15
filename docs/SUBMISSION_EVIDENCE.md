@@ -1,68 +1,81 @@
-# GNS V3 Bradbury evidence
+# GNS V3 submission evidence
 
-This is the canonical evidence map for the V3 remediation release and the
-August 15 source-backed reinstatement correction. Deployment/source identity is
-verified below. The suspension/reinstatement behavior receipts remain an
-explicit release gate and must be added before resubmission.
+This file is the canonical evidence ledger. It separates locally verified
+release-candidate behavior from historical Bradbury receipts so reviewers can
+identify exactly which source each claim supports.
 
-## Corrected V3 contract
+## Release candidate
 
-| Item | Public evidence |
+| Item | Value |
 | --- | --- |
-| Contract | <https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a> |
-| Deployment | <https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e> |
-| Source identity | Deployment calldata contains `contracts/gns.py` byte-for-byte; SHA-256 `f23a89ff1c9146ceab5b55c46d8fd61de70a8494445a182b35a906072dd49b13`. |
+| Source | [`contracts/gns.py`](../contracts/gns.py) |
+| SHA-256 | `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2` |
+| Matching Bradbury contract | **Pending** |
+| Matching deployment receipt | **Pending** |
+| Matching public application | **Pending** |
 | Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
 
-The deployment receipt is `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`. Initial
-moderation was also verified on the corrected deployment: transaction
+Do not resubmit while any matching item above is pending. The deployment
+calldata must contain this exact source, and the frontend configuration must
+point to that accepted contract.
+
+## Required Bradbury regression matrix
+
+Record finalized explorer links and post-state reads for every row:
+
+| Scenario | Required proof | Status |
+| --- | --- | --- |
+| Deployment identity | Accepted deployment; calldata SHA equals the release-candidate SHA | Pending |
+| Initial registration | Active record after moderated registration | Pending |
+| Source-backed suspension | `get_record.status == "suspended"`; `get_challenge.action == "suspend"`; source, claim, confidence, and challenged profile are stored | Pending |
+| Generic/no-op bypass rejection | `update_profile` and unchanged `reinstate_profile` fail; both reads remain unchanged | Pending |
+| Failed changed remediation | Source still supports suspension; transaction fails closed and both reads remain suspended | Pending |
+| Successful changed remediation | Exact `keep` consensus; record becomes active and challenge becomes `keep` for the accepted snapshot | Pending |
+| Suspended owner release | `release` fails and preserves record plus challenge | Pending |
+| Expired suspension cleanup | `release_expired` removes the record but preserves the `suspend` tombstone | Pending |
+| Re-registration guard | Unchanged and still-violating registrations fail; changed rebuttal succeeds only after source-backed exact `keep` consensus | Pending |
+| Frontend identity | Production app displays and calls the matching contract address | Pending |
+
+Use a real, stable, public HTTPS fixture with a DNS hostname. Placeholder text,
+HTTP URLs, local addresses, IP literals, and unverifiable claims are invalid
+evidence. The repository fixture is
+[`test-evidence/gns-remediation-2026.txt`](test-evidence/gns-remediation-2026.txt);
+publish and verify its raw GitHub URL before testing.
+
+## Historical follow-up deployment
+
+Contract
+[`0x337105406bca6EcAf55bd90F6e65A9e041256A8a`](https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a)
+was deployed by
+[`0x79db...a28e`](https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e).
+That receipt is `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`, and its deployed
+source SHA is `f23a89ff1c9146ceab5b55c46d8fd61de70a8494445a182b35a906072dd49b13`.
+
+Transaction
 [`0xd9a0...a8c2`](https://explorer-bradbury.genlayer.com/tx/0xd9a032a4b4d19b4cab27c85bd152cbb9452faa598a191d38716a1de0c78da8c2)
-registered `gns-remediation-2026.gen` as an active record after a `safe` result.
+registered `gns-remediation-2026.gen` as active after a `safe` result. These are
+historical deployment and moderation receipts; they do not prove the current
+tombstone or URL-boundary behavior.
 
-## Corrected reinstatement regression
+Two later calls used placeholder source strings and correctly finished with an
+execution error during input validation. They are not evidence of a contract
+defect, but they also do not satisfy the source-backed test matrix.
 
-Status: **pending**. The public evidence fixture is
-[`docs/test-evidence/gns-remediation-2026.txt`](test-evidence/gns-remediation-2026.txt).
-Do not present the two failed placeholder-URL calls as contract defects or as
-completed challenge evidence; they failed input validation before a source
-could be fetched. The final evidence set must include:
+## Historical original V3 evidence
 
-1. a source-backed suspension using the public raw fixture URL;
-2. a blocked generic or unchanged profile update;
-3. a successful changed-profile reinstatement with consistent `get_record` and
-   `get_challenge` reads; and
-4. a failed reinstatement that leaves both states suspended.
-
-## Historical V3 smoke evidence
-
-The following receipts belong to the prior V3 deployment
-[`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f).
-They remain valid evidence for lifecycle, recovery, update moderation, and the
-original source-backed challenge, but not for the corrected reinstatement
-invariant.
+The following receipts belong to
+[`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f)
+and support only the original V3 behavior:
 
 | Scenario | Evidence | Result |
 | --- | --- | --- |
-| Initial moderation and registration | <https://explorer-bradbury.genlayer.com/tx/0xbcd7da40ed7a24a5805269c5b35bfd91263b743b50514291b5e844fdc558d8cf> | Accepted registration of `gns-v3-bradbury-2026.gen`; profile approved as `safe`; lease is active. |
-| Post-registration profile moderation | <https://explorer-bradbury.genlayer.com/tx/0x4bfc837c2b2c452284352c10c9939a0be18e3558c0ba7272d9698889792c42b3> | Initial leader timeout was appealed. The final outcome accepted the profile update with category `safe`; the updated bio is persisted. |
-| Recovery configuration | <https://explorer-bradbury.genlayer.com/tx/0xe7df7288f06e99c6eb680af6a206d41559a948bfa06288bba099e6ec016c41a4> | Accepted setup of a distinct recovery address; the record exposes `recovery_configured: true` and no pending transfer. |
-| Source-backed challenge | <https://explorer-bradbury.genlayer.com/tx/0x215a8137eb77b360801200c28d2f955d237943c4b63d25e07f9f95f07f7ce20e> | **Finalized**, stored accepted. Validators independently reviewed the public source and bound `action=keep`, `category=insufficient_evidence`, and `confidence_bps=9500`; the record remains `active`. |
+| Registration | <https://explorer-bradbury.genlayer.com/tx/0xbcd7da40ed7a24a5805269c5b35bfd91263b743b50514291b5e844fdc558d8cf> | Active one-year registration after `safe` moderation |
+| Profile update | <https://explorer-bradbury.genlayer.com/tx/0x4bfc837c2b2c452284352c10c9939a0be18e3558c0ba7272d9698889792c42b3> | Appealed leader timeout, then accepted profile update |
+| Recovery setup | <https://explorer-bradbury.genlayer.com/tx/0xe7df7288f06e99c6eb680af6a206d41559a948bfa06288bba099e6ec016c41a4> | Distinct recovery address configured |
+| Source-backed challenge | <https://explorer-bradbury.genlayer.com/tx/0x215a8137eb77b360801200c28d2f955d237943c4b63d25e07f9f95f07f7ce20e> | Finalized `keep`, `insufficient_evidence`, confidence `9500`; record remained active |
 
-The challenge stored this public source URL:
+## Historical V2
 
-<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/review-v3-remediation/README.md>
-
-## Historical V2 deployment
-
-`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9` is the previous V2 resolver.
-It does not implement V3 expiry, release, recovery, post-registration
-moderation, or source-backed challenges. It remains historical evidence only and
-must not be used to support the V3 remediation claims.
-
-## Frontend release status
-
-The checked-in frontend configuration targets the corrected V3 contract. The
-public application remains <https://dotgenapp.vercel.app> until this branch is
-committed, pushed, and Vercel completes its production build. Verify the live
-application reports `0x337105406bca6EcAf55bd90F6e65A9e041256A8a`
-before resubmitting the project.
+`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9` is a superseded V2 resolver. It
+does not implement the complete V3 lifecycle or current suspension invariant
+and must not be used as evidence for this release.

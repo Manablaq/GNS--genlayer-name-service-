@@ -44,6 +44,26 @@ export function safeExternalUrl(value: string): string | null {
   } catch { return null }
 }
 
+export function safeEvidenceUrl(value: string): string | null {
+  const safe = safeExternalUrl(value)
+  if (!safe) return null
+  try {
+    const url = new URL(safe)
+    const host = url.hostname.toLowerCase()
+    const labels = host.split('.')
+    if (
+      url.protocol !== 'https:' || host.length > 253 || !host.includes('.') ||
+      host.includes(':') || /^\d+(?:\.\d+){3}$/.test(host) ||
+      labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+    ) return null
+    if (url.port) {
+      const port = Number(url.port)
+      if (!Number.isInteger(port) || port < 1 || port > 65535) return null
+    }
+    return url.toString()
+  } catch { return null }
+}
+
 export function normalizeProfile(profile: {
   avatar: string
   bio: string
@@ -56,6 +76,18 @@ export function normalizeProfile(profile: {
     twitter: profile.twitter.trim().replace(/^@/, ''), github: profile.github.trim().replace(/^@/, ''),
     website: profile.website.trim(),
   }
+}
+
+export type ProfileFields = ReturnType<typeof normalizeProfile>
+
+export function profilesEqual(
+  left: ProfileFields,
+  right: Partial<ProfileFields> | null | undefined,
+) {
+  if (!right) return false
+  return (Object.keys(PROFILE_LIMITS) as (keyof ProfileFields)[]).every(
+    (field) => left[field] === (right[field] || ''),
+  )
 }
 
 export const PROFILE_LIMITS = { avatar: 256, bio: 280, twitter: 64, github: 64, website: 256 } as const

@@ -112,26 +112,37 @@ class StructureTests(unittest.TestCase):
                     if isinstance(n, ast.FunctionDef) and n.name == "register")
 
     def test_documented_nested_nondeterminism(self):
-        for method_name, expected_nested, expected_args in (
-            ("register", {"leader_fn", "validator_fn"}, ["leader_fn", "validator_fn"]),
+        for method_name, expected_nested, expected_calls in (
+            ("register", {"prior_review_once", "prior_validator_fn", "leader_fn", "validator_fn"},
+             [["prior_review_once", "prior_validator_fn"], ["leader_fn", "validator_fn"]]),
             ("update_profile", {"leader_fn", "validator_fn"}, ["leader_fn", "validator_fn"]),
             ("reinstate_profile", {"review_once", "validator_fn"}, ["review_once", "validator_fn"]),
             ("challenge_profile", {"review_once", "validator_fn"}, ["review_once", "validator_fn"]),
         ):
+            if method_name != "register":
+                expected_calls = [expected_calls]
             method = next(n for n in ast.walk(TREE) if isinstance(n, ast.FunctionDef) and n.name == method_name)
-            nested = {node.name: node for node in method.body if isinstance(node, ast.FunctionDef)}
+            nested = {
+                node.name: node for node in ast.walk(method)
+                if isinstance(node, ast.FunctionDef) and node is not method
+            }
             self.assertEqual(set(nested), expected_nested)
             self.assertFalse(any(isinstance(node, ast.Lambda) for node in ast.walk(method)))
             for function in nested.values():
                 self.assertFalse(any(isinstance(node, ast.Name) and node.id == "self"
                                      for node in ast.walk(function)))
-            run_call = next(node for node in ast.walk(method)
-                            if isinstance(node, ast.Call)
-                            and isinstance(node.func, ast.Attribute)
-                            and node.func.attr == "run_nondet_unsafe")
-            self.assertEqual([ast.unparse(arg) for arg in run_call.args], expected_args)
-            self.assertFalse(any(isinstance(arg, ast.Attribute) and arg.attr == "__call__"
-                                 for arg in run_call.args))
+            run_calls = [node for node in ast.walk(method)
+                         if isinstance(node, ast.Call)
+                         and isinstance(node.func, ast.Attribute)
+                         and node.func.attr == "run_nondet_unsafe"]
+            self.assertEqual(
+                sorted([[ast.unparse(arg) for arg in call.args] for call in run_calls]),
+                sorted(expected_calls),
+            )
+            self.assertFalse(any(
+                isinstance(arg, ast.Attribute) and arg.attr == "__call__"
+                for call in run_calls for arg in call.args
+            ))
 
     def test_obsolete_callable_constructs_are_absent(self):
         class_names = {node.name for node in TREE.body if isinstance(node, ast.ClassDef)}
@@ -183,9 +194,57 @@ class StructureTests(unittest.TestCase):
             self.assertIn("leader['confidence_bps'] == validator['confidence_bps']", comparisons)
             self.assertIn("gl.nondet.web.get(source_url)", ast.unparse(method))
 
+        register = self.register_node()
+        prior_validator = next(
+            node for node in ast.walk(register)
+            if isinstance(node, ast.FunctionDef) and node.name == "prior_validator_fn"
+        )
+        prior_comparisons = {ast.unparse(node) for node in ast.walk(prior_validator)
+                             if isinstance(node, ast.Compare)}
+        self.assertIn("leader['action'] == validator['action']", prior_comparisons)
+        self.assertIn("leader['category'] == validator['category']", prior_comparisons)
+        self.assertIn("leader['confidence_bps'] == validator['confidence_bps']", prior_comparisons)
+        self.assertIn("gl.nondet.web.get(source_url)", ast.unparse(register))
+
+    def test_suspension_tombstone_guards_release_and_reregistration(self):
+        release = next(n for n in ast.walk(TREE)
+                       if isinstance(n, ast.FunctionDef) and n.name == "_release_record")
+        release_text = ast.unparse(release)
+        self.assertIn("challenge.action != CHALLENGE_SUSPEND", release_text)
+
+        owner_release = next(n for n in ast.walk(TREE)
+                             if isinstance(n, ast.FunctionDef) and n.name == "release")
+        self.assertIn(
+            "suspended profile requires source-backed reinstatement before release",
+            ast.unparse(owner_release),
+        )
+
+        register_text = ast.unparse(self.register_node())
+        self.assertIn("prior_challenge.action == CHALLENGE_SUSPEND", register_text)
+        self.assertIn(
+            "proposed_profile_snapshot == prior_challenge.profile_snapshot",
+            register_text,
+        )
+        self.assertIn(
+            "registration requires changed profile data after suspension",
+            register_text,
+        )
+        self.assertIn("reinstatement_prompt(payload, source_text)", register_text)
+        self.assertIn("registration remains blocked by prior challenge", register_text)
+        self.assertIn("self.challenges[canonical] = ChallengeRecord", register_text)
+
+        challenge_record = next(
+            node for node in TREE.body
+            if isinstance(node, ast.ClassDef) and node.name == "ChallengeRecord"
+        )
+        fields = {
+            node.target.id for node in challenge_record.body
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+        }
+        self.assertIn("profile_snapshot", fields)
+
     def test_storage_follows_nondeterminism_and_strict_validation(self):
         for method_name, validator_name in (
-            ("register", "validate_moderation_result"),
             ("update_profile", "validate_moderation_result"),
             ("reinstate_profile", "validate_challenge_result"),
             ("challenge_profile", "validate_challenge_result"),
@@ -207,6 +266,19 @@ class StructureTests(unittest.TestCase):
             self.assertTrue(storage_calls)
             self.assertGreater(min(storage_calls), run_call.lineno)
             self.assertIn(validator_name, ast.unparse(method))
+
+        register = self.register_node()
+        register_text = ast.unparse(register)
+        self.assertLess(
+            register_text.index("run_nondet_unsafe(prior_review_once, prior_validator_fn)"),
+            register_text.index("self.records[canonical] = NameRecord"),
+        )
+        self.assertLess(
+            register_text.index("run_nondet_unsafe(leader_fn, validator_fn)"),
+            register_text.rindex("self.records[canonical] = NameRecord"),
+        )
+        self.assertIn("validate_moderation_result", register_text)
+        self.assertIn("validate_challenge_result", register_text)
 
     def test_public_method_schema_source_is_intentional(self):
         contract = next(node for node in TREE.body if isinstance(node, ast.ClassDef)
@@ -340,6 +412,25 @@ class ProfileValidationTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 GNS.validate_profile(url, "", "", "", "")
         GNS.validate_profile("https://example.com/avatar.png", "", "", "", "http://example.com")
+
+    def test_challenge_source_requires_public_https_dns_host(self):
+        self.assertEqual(
+            GNS.validate_source_url("https://evidence.example/path?case=1"),
+            "https://evidence.example/path?case=1",
+        )
+        for value in (
+            "http://evidence.example/path",
+            "https://localhost/path",
+            "https://127.0.0.1/path",
+            "https://[2001:db8::1]/path",
+            "https://singlelabel/path",
+            "https://-bad.example/path",
+            "https://example.com:bad/path",
+            "https://example.com:70000/path",
+        ):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    GNS.validate_source_url(value)
 
 
 class ChallengeParserTests(unittest.TestCase):

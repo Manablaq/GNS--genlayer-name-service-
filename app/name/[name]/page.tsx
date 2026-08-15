@@ -10,6 +10,7 @@ import {
   isAddress,
   normalizeProfile,
   PROFILE_LIMITS,
+  safeEvidenceUrl,
   safeExternalUrl,
   validateName,
 } from "@/lib/domain";
@@ -71,6 +72,7 @@ interface ProfileChallenge {
   confidence_bps?: number;
   summary?: string;
   decided_at?: string;
+  challenged_profile?: Partial<Profile>;
 }
 export default function NamePage() {
   const params = useParams<{ name: string }>();
@@ -147,8 +149,8 @@ export default function NamePage() {
       setSubmitError("Enter a non-zero 42-character address.");
       return;
     }
-    if (action === "challenge" && (!safeExternalUrl(sourceUrl) || !claim.trim())) {
-      setSubmitError("Provide a valid public HTTP(S) source URL and a specific claim.");
+    if (action === "challenge" && (!safeEvidenceUrl(sourceUrl) || !claim.trim())) {
+      setSubmitError("Provide a public HTTPS source with a DNS hostname and a specific claim.");
       return;
     }
     setBusy(true);
@@ -425,7 +427,7 @@ export default function NamePage() {
               </div>
             </header>
             <p className="muted">
-              Any connected wallet may submit a public HTTP(S) source and a specific policy claim. Validators independently retrieve and review that source before a suspension can be recorded.
+              Any connected wallet may submit a public HTTPS source with a DNS hostname and a specific policy claim. Validators independently retrieve and review that source before a suspension can be recorded.
             </p>
             {challenge?.found && (
               <div className="record-row">
@@ -433,6 +435,12 @@ export default function NamePage() {
                   <span>Latest decision</span>
                   <strong>{challenge.action} · {challenge.category}</strong>
                   <small>{challenge.summary}</small>
+                  {challenge.challenged_profile && (
+                    <small>
+                      Decision is bound to the challenged profile snapshot
+                      returned by the contract.
+                    </small>
+                  )}
                   {challenge.source_url && <ExternalLink href={challenge.source_url}>View evidence source ↗</ExternalLink>}
                 </div>
                 <StatusBadge tone={challenge.action === "suspend" ? "warning" : "success"}>
@@ -518,9 +526,17 @@ export default function NamePage() {
                   <small>Stops the delayed transfer before execution</small>
                 </button>
               )}
-              <button className="owner-action danger-text" onClick={() => setAction("release")}>
+              <button
+                className="owner-action danger-text"
+                onClick={() => setAction("release")}
+                disabled={record.status === "suspended"}
+              >
                 <span>Release name</span>
-                <small>Permanently removes this registration for anyone to claim</small>
+                <small>
+                  {record.status === "suspended"
+                    ? "Reinstate before release; evidence cannot be erased"
+                    : "Permanently removes this registration for anyone to claim"}
+                </small>
               </button>
             </>
           ) : (
@@ -618,7 +634,7 @@ function OwnerDialog({
   const invalidUrl =
     (profile.avatar && !safeExternalUrl(profile.avatar)) ||
     (profile.website && !safeExternalUrl(profile.website));
-  const challengeInvalid = action === "challenge" && (!safeExternalUrl(sourceUrl) || !claim.trim());
+  const challengeInvalid = action === "challenge" && (!safeEvidenceUrl(sourceUrl) || !claim.trim());
   const targetAction = action === "address" || action === "transfer" || action === "recovery" || action === "initiate_recovery";
   const normalizedProfile = normalizeProfile(profile);
   const profileChanged = (Object.keys(normalizedProfile) as (keyof Profile)[]).some(
@@ -750,12 +766,17 @@ function OwnerDialog({
       )}
       {action === "renew" && (
         <InlineNotice>
-          Renewal adds one year from the current expiry, or one year from now if the name has already expired.
+          Renewal adds one year from the current expiry, or one year from now if
+          the name has already expired. Renewal preserves a suspended status and
+          does not bypass source-backed reinstatement.
         </InlineNotice>
       )}
       {action === "release" && (
         <InlineNotice tone="warning" title="This cannot be undone">
-          The record, profile, recovery configuration, and active challenge record will be removed. The name becomes publicly available immediately.
+          The record, profile, and recovery configuration will be removed. Any
+          non-suspension challenge is removed. A suspended record cannot use
+          this action, and an expired suspension remains attached to the name
+          until a changed profile passes source-backed review.
         </InlineNotice>
       )}
       {action === "clear_recovery" && (
@@ -778,14 +799,14 @@ function OwnerDialog({
           <label className="field">
             <span>Public evidence URL</span>
             <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://example.org/evidence" maxLength={256} />
-            <em>Use a publicly reachable HTTP(S) source. Validators fetch it independently.</em>
+            <em>Use a publicly reachable HTTPS source with a DNS hostname. Validators fetch it independently.</em>
           </label>
           <label className="field">
             <span>Specific policy claim</span>
             <textarea rows={3} value={claim} onChange={(e) => setClaim(e.target.value)} maxLength={280} placeholder="Explain the claimed impersonation, deception, or abuse." />
           </label>
-          {(!safeExternalUrl(sourceUrl) || !claim.trim()) && (
-            <p className="field-error">Provide a valid public HTTP(S) URL and a specific claim.</p>
+          {(!safeEvidenceUrl(sourceUrl) || !claim.trim()) && (
+            <p className="field-error">Provide a public HTTPS source with a DNS hostname and a specific claim.</p>
           )}
         </div>
       )}

@@ -1,111 +1,113 @@
 # GNS: GenLayer Name Service
 
-GNS is a full GenLayer application for non-custodial `.gen` names: a user
-registers a human-readable name, maintains a public profile and resolved wallet
-address, and can receive a direct wallet payment without routing funds through
-the registry. The contract does not hold, forward, or settle user payments.
+GNS is a complete GenLayer application for non-custodial `.gen` names. A user
+can register a human-readable name, publish a bounded profile, resolve it to a
+wallet, configure delayed recovery, and send GEN directly wallet-to-wallet.
+The registry never holds or forwards payment funds.
 
-This branch contains the **V3 remediation release** and the August 15 reviewer
-follow-up. It adds an evidence-backed public challenge path, leases, release,
-delayed recovery, moderation on every profile update, and source-backed
-reinstatement that cannot bypass a stored suspension. The corrected source is
-deployed on Bradbury; the end-to-end suspension and reinstatement smoke test is
-the remaining release gate before resubmission.
+This repository contains the V3 remediation candidate for the August 15, 2026
+review. The candidate closes both the reported no-op profile-update bypass and
+the related release/re-registration bypass. It has passed the local contract,
+Direct Mode, frontend, build, and GenVM verification gates documented below.
+It must still be deployed as a new Bradbury instance before resubmission.
 
-## Status and public links
+## Release status
 
-| Item | Link or status |
+| Item | Status |
 | --- | --- |
 | Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
-| Current public application | <https://dotgenapp.vercel.app> |
-| Corrected V3 contract | [`0x337105406bca6EcAf55bd90F6e65A9e041256A8a`](https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a) |
-| Corrected deployment receipt | [`0x79db...a28e`](https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e), accepted with return |
-| Prior V3 contract | [`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f), historical for this follow-up |
-| Prior V3 finalized source-backed challenge | [`0x215a...e20e`](https://explorer-bradbury.genlayer.com/tx/0x215a8137eb77b360801200c28d2f955d237943c4b63d25e07f9f95f07f7ce20e), historical behavior evidence |
-| Previously deployed V2 contract | [`0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9`](https://explorer-bradbury.genlayer.com/address/0x5e7B8F753E38dA96967117F712AcC3f69F4ECdd9), historical only |
+| Public application | <https://dotgenapp.vercel.app> |
+| Release-candidate source | [`contracts/gns.py`](contracts/gns.py) |
+| Release-candidate source SHA-256 | `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2` |
+| Matching Bradbury deployment | **Pending** |
+| Prior follow-up contract | [`0x337105406bca6EcAf55bd90F6e65A9e041256A8a`](https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a), historical only |
+| Prior follow-up deployment | [`0x79db...a28e`](https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e), historical only |
+| Original V3 contract | [`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f), historical only |
 
-The corrected deployment calldata contains `contracts/gns.py` byte-for-byte.
-The source SHA-256 is
-`f23a89ff1c9146ceab5b55c46d8fd61de70a8494445a182b35a906072dd49b13`.
-The frontend configuration now targets this corrected contract. The prior V3
-deployment remains useful historical evidence, but it does not contain the
-source-backed reinstatement fix described below.
+The checked-in frontend intentionally continues to target `0x337...` until a
+new deployment is accepted and its source identity is verified. Do not cite
+that address as evidence for the current release candidate.
 
-## Review remediation
+## What the review changed
 
-The change set addresses the original request and its reinstatement follow-up.
-Detailed rationale and test mapping are in the
-[August 12 response](docs/REVIEW_RESPONSE_2026-08-12.md) and
-[August 15 follow-up](docs/REVIEW_RESPONSE_2026-08-15.md).
+The reviewer identified that a suspended owner could call `update_profile`
+with unchanged fields, obtain a source-free `safe` result, and reactivate the
+name without rebutting the stored evidence. The completed audit also found a
+second route: deleting an expired suspended record could otherwise make the
+name available for ordinary source-free registration.
 
-| Review request | V3 implementation |
+The release candidate enforces one lifecycle invariant:
+
+> A `suspend` finding remains attached to the name until changed profile data
+> passes an independent review of the original source and claim.
+
+| Path | Enforced behavior |
 | --- | --- |
-| Source-backed entitlement or challenge | `challenge_profile` accepts a public HTTP(S) source and a specific claim. The leader and every validator fetch the source independently and reapply the stored policy. |
-| Decision binding | Validators require exact agreement on `action`, `category`, and `confidence_bps` before the resulting challenge can change status. |
-| Expiry and release | Every registration has `expires_at`, `renew`, owner `release`, and public `release_expired`. Expired or suspended names no longer resolve. |
-| Recovery | Owners configure a recovery address; that address can initiate a transfer to a nominated account. Execution is delayed seven days and owners can cancel. |
-| Post-registration moderation | `update_profile` reruns strict structured moderation for active records, rejects suspended records, and requires expired records to renew first. `reinstate_profile` requires changed profile data, independently refetches the stored challenge source, reapplies the prior finding to the proposed profile, and requires exact agreement on `action`, `category`, and `confidence_bps`. |
-| Direct Mode test repair | Direct Mode uses the supported `direct_vm.run_validator()` interface and no longer reads private mock internals. |
+| `update_profile` | Rejects suspended records before nondeterministic work. |
+| `reinstate_profile` | Requires changed profile data, refetches the stored source, reapplies the stored claim, and requires exact validator agreement on `action`, `category`, and `confidence_bps`. |
+| Owner `release` | Rejects suspended records, so evidence cannot be erased. |
+| `release_expired` | May remove an expired record, but preserves a suspension tombstone containing the source, claim, and challenged profile snapshot. |
+| `register` after a suspension tombstone | Rejects unchanged data and performs the same source-backed independent review before recreating an active record. |
+| Failed or disagreeing review | Writes neither the proposed record nor a replacement challenge. |
 
-## Contract design
+The record and challenge move together only after consensus. Successful
+reinstatement stores an active record and a matching `keep` decision;
+unsuccessful remediation preserves the previous `suspend` state.
 
-The implementation is [contracts/gns.py](contracts/gns.py). `NameRecord` holds
-the owner, resolver destination, bounded profile fields, expiry, recovery state,
-and a lifecycle status. Owner-name indexing uses maintained `TreeMap` slots and
-swap-and-pop removal, so owner pagination never scans global records.
+## Source-backed consensus
 
-### Lifecycle
+`challenge_profile` accepts a specific claim and a credential-free public
+HTTPS source using a DNS hostname. Plain HTTP, localhost, IP literals,
+single-label hosts, credentials, malformed ports, and malformed DNS labels are
+rejected before nondeterministic execution.
 
-1. `register` gives the sender a one-year lease after name and initial profile moderation.
-2. `renew` extends from the later of the current expiry or the current transaction time.
-3. `release` lets the owner delete a record immediately. After expiry, anyone can call `release_expired`.
-4. `set_recovery` records a distinct recovery address. `initiate_recovery` starts a seven-day delay; `cancel_recovery` stops it; `execute_recovery` transfers ownership after the delay and clears recovery state.
-5. `resolve` and `reverse_resolve` return a usable recipient only while the record is active. `get_record` still exposes lifecycle state so owners can renew or remediate it.
+The leader and every validator independently:
 
-### Moderation and public challenges
+1. fetch the registered source;
+2. apply the same registered policy to the same profile snapshot;
+3. parse a bounded result with an allowed action, category, confidence level,
+   and summary; and
+4. compare every field that can change lifecycle state.
 
-Initial registrations and profile updates serialize bounded public fields and
-run nested leader/validator functions. The validator independently performs the
-same policy evaluation, then compares the outcome fields that control storage.
+Validators require exact equality on `action`, `category`, and
+`confidence_bps`. No storage write, transfer, emit, or contract call occurs
+inside a nondeterministic callback. Storage changes happen only after the
+consensus result has passed strict validation.
 
-`challenge_profile` adds a source-backed moderation route. It validates a
-credential-free public HTTP(S) URL and a bounded claim, fetches the source in
-each independent evaluation, truncates evidence to a fixed size, and asks the
-policy to produce only a strict result schema. Only a matching `suspend` result
-records the challenge and pauses resolution. The stored challenge exposes the
-source, claim, decision, category, confidence, summary, and timestamp.
+## Lifecycle
 
-A suspension cannot be cleared through `update_profile`. The owner must call
-`reinstate_profile` with at least one changed profile field. The leader and each
-validator independently refetch the original challenge source and evaluate the
-stored claim against the proposed profile. Reinstatement succeeds only on an
-exact `keep` consensus. The profile and challenge are then updated together;
-every rejection or disagreement leaves both stored states unchanged.
+1. `register` creates a one-year lease after name and profile moderation.
+2. `renew` extends from the later of the current expiry or current time and
+   never clears suspension.
+3. `release` removes an ordinary owner record; `release_expired` performs public
+   expiry cleanup while preserving suspension evidence.
+4. `set_recovery`, `initiate_recovery`, `cancel_recovery`, and
+   `execute_recovery` implement a seven-day, cancelable recovery delay.
+5. `resolve` and `reverse_resolve` return a recipient only for active,
+   unexpired records.
 
-No writes, emits, or contract calls occur inside a non-deterministic callback.
-This follows GenLayer's guidance that leaders and validators independently fetch
-web data and that consensus should compare stable, consequential derived fields.
+Owner-name indexing uses maintained `TreeMap` slots and swap-and-pop removal,
+so paginated ownership reads never scan all registrations.
 
 ## Application routes
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Availability search and registration |
-| `/name/[name]` | Public profile, lifecycle state, evidence challenge, owner controls, and recovery controls |
-| `/my-names` | Paginated owner dashboard with lifecycle status |
-| `/send` | Resolve, review, reread, and send GEN directly from the connected wallet |
+| `/` | Availability search, suspension-tombstone detection, and registration or remediation |
+| `/name/[name]` | Profile, lifecycle, challenge history, release guards, recovery, and owner controls |
+| `/my-names` | Bounded owner-name pagination |
+| `/send` | Resolve, reread, and send GEN directly from the connected wallet |
 | `/api/contract` | Allowlisted server-side read bridge |
 
-The frontend confirms a submitted contract write only after the Bradbury receipt
-is successful and a method-specific read proves the expected result. For
-example, a challenge must produce the submitted source and claim in
-`get_challenge`; a release must make the name available; and a renewal must
-advance `expires_at`.
+The transaction manager marks a write complete only after a successful
+Bradbury receipt and a method-specific state read. Reinstatement confirmation,
+for example, requires both `record.status == "active"` and
+`challenge.action == "keep"`.
 
-## Local development and verification
+## Local verification
 
-Requirements: Node.js 20+, Python 3.12+, and a wallet configured for Bradbury
-when manually deploying.
+Requirements: Node.js 20+, Python 3.12+, Docker for GenLayer Direct Mode, and a
+wallet configured for Bradbury for manual deployment.
 
 ```bash
 npm install
@@ -115,45 +117,44 @@ python3.12 -m venv .venv
 npm run lint
 npm test
 python3 -m unittest tests/test_gns_v2.py -v
-.venv/bin/pytest tests/test_gns_v2_direct.py -v
-npm run build
+.venv/bin/pytest tests/test_gns_v2_direct.py -q
+npm run build -- --webpack
+npm audit --omit=dev
+GENVM_VERSION=v0.3.0-rc4 \
+  /Users/mralbert/.venvs/genvm-lint/bin/genvm-lint check contracts/gns.py
+git diff --check
 ```
 
-The Direct Mode suite covers independent validator agreement and disagreement,
-profile moderation after registration, source-backed suspension, rejected
-unchanged updates, successful changed-profile reinstatement, failed
-reinstatement with atomic state preservation, expiry, renewal, expired release,
-recovery delay and execution, indexing, transfer, and pagination. It uses the
-exact dependency hash declared on line 1 of the contract.
+Current automated coverage:
 
-`genvm-lint` can be run with:
+- 26 frontend and transaction-state tests;
+- 29 parser, structure, URL-boundary, and lifecycle model tests;
+- 18 Direct Mode contract tests; and
+- GenVM lint plus semantic validation of all 22 public methods; and
+- a production webpack build and dependency audit with zero known
+  vulnerabilities.
 
-```bash
-/Users/mralbert/.venvs/genvm-lint/bin/genvm-lint check contracts/gns.py
-```
+The Direct Mode suite includes source-backed suspension, generic/no-op update
+rejection, changed-profile reinstatement, failed remediation with atomic state
+preservation, blocked owner release, expiry cleanup with a preserved tombstone,
+and both rejected and accepted source-backed re-registration.
 
-## Bradbury evidence
+## Deployment and evidence
 
-| Capability | Transaction or read | Verified outcome |
-| --- | --- | --- |
-| Corrected deployment/source identity | [`0x79db...a28e`](https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e) | `ACCEPTED`, `AGREE`, `FINISHED_WITH_RETURN`; deployed source is byte-identical to `contracts/gns.py` with SHA-256 `f23a89ff1c9146ceab5b55c46d8fd61de70a8494445a182b35a906072dd49b13`. |
-| Corrected registration moderation | [`0xd9a0...a8c2`](https://explorer-bradbury.genlayer.com/tx/0xd9a032a4b4d19b4cab27c85bd152cbb9452faa598a191d38716a1de0c78da8c2) | `gns-remediation-2026.gen` registered as `active`; consensus approved the initial profile as `safe`. |
-| Prior V3 lifecycle smoke tests | [canonical evidence map](docs/SUBMISSION_EVIDENCE.md#historical-v3-smoke-evidence) | Registration, profile moderation, recovery, and source-backed challenge were verified on the historical V3 deployment. |
-| Corrected reinstatement regression | Pending | Requires a public HTTPS evidence fixture, a source-backed suspension, a blocked generic/no-op update, successful changed-profile reinstatement, and a failed reinstatement that preserves both states. |
+Follow [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) exactly.
+The canonical reviewer response is
+[`docs/REVIEW_RESPONSE_2026-08-15.md`](docs/REVIEW_RESPONSE_2026-08-15.md), and
+public receipts belong in
+[`docs/SUBMISSION_EVIDENCE.md`](docs/SUBMISSION_EVIDENCE.md).
 
-## Follow-up release status
-
-- [x] Deploy `contracts/gns.py` as a new Bradbury instance and verify exact source identity.
-- [x] Update `lib/config.ts` to the corrected contract address.
-- [x] Rerun static, Direct Mode, frontend, production-build, and GenVM safety-lint checks after merging remote changes.
-- [ ] Rerun GenVM SDK semantic validation when the linter artifact includes pinned dependency `1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6`; linter `0.11.0` currently reports that archive member as unavailable.
-- [ ] Exercise suspension, blocked generic/no-op updates, changed-profile reinstatement, and failed-reinstatement state preservation on Bradbury.
-- [ ] Deploy the matching frontend and replace historical submission links with the corrected regression receipts.
+The source, source hash, Bradbury deployment calldata, frontend contract
+address, and submission link must all identify the same build. A local test or
+historical receipt is never presented as evidence for a newer source revision.
 
 ## Limits
 
-`.gen` names are records in GNS, not ENS names or legal identity documents.
-Moderation and source-backed challenges are policy decisions reached through
-GenLayer consensus; they are not a claim that GNS verifies off-chain identity.
-Bradbury is testnet infrastructure and this project has not been presented as a
-production security audit.
+`.gen` entries are application records, not ENS names, credentials, or legal
+identity documents. Moderation outcomes are policy decisions reached through
+GenLayer consensus, not proof of a person's identity. Bradbury is testnet
+infrastructure, and this repository is not represented as a production
+security audit.
