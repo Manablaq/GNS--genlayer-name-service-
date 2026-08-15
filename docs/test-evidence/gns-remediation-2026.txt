@@ -1,0 +1,18 @@
+GNS source-backed reinstatement regression fixture
+
+This is a synthetic test fixture for the gns-remediation-2026.gen contract
+regression test. It is not a real-world identity claim and must not be used
+to moderate any other name.
+
+Target name: gns-remediation-2026.gen
+
+The challenged profile under test is:
+- bio: Initial profile for source-backed reinstatement test
+- twitter: mr_albert_blaq
+- github: Manablaq
+
+For this controlled regression, the exact profile above is declared to be an
+unauthorized synthetic impersonation of the identity represented by this
+fixture. A source-backed challenge may suspend the exact profile described
+above. If the owner materially changes the profile data, this exact finding
+does not establish that the changed profile is still an impersonation.
