@@ -160,10 +160,27 @@ export default function NamePage() {
       let label: string;
       if (action === "profile") {
         const p = normalizeProfile(profile);
-        method = "update_profile";
+        const reinstating = record.status === "suspended";
+        const changed = (Object.keys(p) as (keyof Profile)[]).some(
+          (field) => p[field] !== (record[field] || ""),
+        );
+        if (reinstating && !changed) {
+          setSubmitError(
+            "Change at least one profile field before requesting reinstatement.",
+          );
+          setBusy(false);
+          return;
+        }
+        method = reinstating ? "reinstate_profile" : "update_profile";
         args = [name, p.avatar, p.bio, p.twitter, p.github, p.website];
-        expected = { action: "update_profile", name, values: p };
-        label = `Update ${record.name} profile`;
+        expected = {
+          action: reinstating ? "reinstate_profile" : "update_profile",
+          name,
+          values: p,
+        };
+        label = reinstating
+          ? `Request reinstatement for ${record.name}`
+          : `Update ${record.name} profile`;
       } else if (action === "address") {
         method = "set_address";
         args = [name, target];
@@ -440,9 +457,22 @@ export default function NamePage() {
               <button
                 className="owner-action"
                 onClick={() => setAction("profile")}
+                disabled={record.status === "expired"}
               >
-                <span>Edit profile</span>
-                <small>Bio, avatar, and social links</small>
+                <span>
+                  {record.status === "suspended"
+                    ? "Remediate and request reinstatement"
+                    : record.status === "expired"
+                      ? "Renew before editing"
+                    : "Edit profile"}
+                </span>
+                <small>
+                  {record.status === "suspended"
+                    ? "Change the profile and re-evaluate the stored evidence"
+                    : record.status === "expired"
+                      ? "Expired profiles cannot be edited until renewal"
+                    : "Bio, avatar, and social links"}
+                </small>
               </button>
               <button
                 className="owner-action"
@@ -568,7 +598,10 @@ function OwnerDialog({
   onConfirm: () => void;
 }) {
   const title = {
-    profile: "Edit public profile",
+    profile:
+      record.status === "suspended"
+        ? "Remediate suspended profile"
+        : "Edit public profile",
     address: "Change resolved address",
     primary: "Make primary identity",
     transfer: "Transfer ownership",
@@ -587,6 +620,12 @@ function OwnerDialog({
     (profile.website && !safeExternalUrl(profile.website));
   const challengeInvalid = action === "challenge" && (!safeExternalUrl(sourceUrl) || !claim.trim());
   const targetAction = action === "address" || action === "transfer" || action === "recovery" || action === "initiate_recovery";
+  const normalizedProfile = normalizeProfile(profile);
+  const profileChanged = (Object.keys(normalizedProfile) as (keyof Profile)[]).some(
+    (field) => normalizedProfile[field] !== (record[field] || ""),
+  );
+  const reinstatementInvalid =
+    action === "profile" && record.status === "suspended" && !profileChanged;
   return (
     <ConfirmDialog
       open={!!action}
@@ -598,18 +637,32 @@ function OwnerDialog({
             ? "Release name"
             : action === "challenge"
               ? "Submit challenge"
+              : action === "profile" && record.status === "suspended"
+                ? "Request reinstatement"
               : action === "execute_recovery"
                 ? "Execute recovery"
                 : "Submit change"
       }
       destructive={action === "transfer" || action === "release" || action === "execute_recovery"}
-      confirmDisabled={Boolean((targetAction && !targetValid) || invalidUrl || challengeInvalid)}
+      confirmDisabled={Boolean(
+        (targetAction && !targetValid) ||
+          invalidUrl ||
+          challengeInvalid ||
+          reinstatementInvalid,
+      )}
       busy={busy}
       onClose={onClose}
       onConfirm={onConfirm}
     >
       {action === "profile" && (
         <div className="form-stack">
+          {record.status === "suspended" && (
+            <InlineNotice tone="warning" title="Source-backed reinstatement required">
+              Change the profile to address the stored challenge. Validators will
+              independently fetch its original source and decide whether that
+              finding still applies before this name can become active.
+            </InlineNotice>
+          )}
           {(["bio", "avatar", "twitter", "github", "website"] as const).map(
             (field) => (
               <label className="field" key={field}>
@@ -643,6 +696,11 @@ function OwnerDialog({
           {invalidUrl && (
             <p className="field-error">
               URLs must be valid HTTP(S) destinations.
+            </p>
+          )}
+          {reinstatementInvalid && (
+            <p className="field-error">
+              A suspended profile cannot be reinstated with unchanged fields.
             </p>
           )}
         </div>

@@ -115,6 +115,7 @@ class StructureTests(unittest.TestCase):
         for method_name, expected_nested, expected_args in (
             ("register", {"leader_fn", "validator_fn"}, ["leader_fn", "validator_fn"]),
             ("update_profile", {"leader_fn", "validator_fn"}, ["leader_fn", "validator_fn"]),
+            ("reinstate_profile", {"review_once", "validator_fn"}, ["review_once", "validator_fn"]),
             ("challenge_profile", {"review_once", "validator_fn"}, ["review_once", "validator_fn"]),
         ):
             method = next(n for n in ast.walk(TREE) if isinstance(n, ast.FunctionDef) and n.name == method_name)
@@ -151,6 +152,11 @@ class StructureTests(unittest.TestCase):
         challenge_text = ast.unparse(challenge)
         self.assertIn("MAX_SOURCE_CHARS", challenge_text)
         self.assertNotIn("response.body.decode('utf-8') +", challenge_text)
+        reinstatement = next(n for n in ast.walk(TREE)
+                             if isinstance(n, ast.FunctionDef) and n.name == "reinstate_profile")
+        reinstatement_text = ast.unparse(reinstatement)
+        self.assertIn("MAX_SOURCE_CHARS", reinstatement_text)
+        self.assertIn("reinstatement requires changed profile data", reinstatement_text)
 
     def test_semantic_consensus_language_and_comparison(self):
         self.assertNotIn("Validate format only", SOURCE)
@@ -165,21 +171,23 @@ class StructureTests(unittest.TestCase):
             self.assertIn("leader['approved'] == validator['approved']", comparisons)
             self.assertIn("leader['category'] == validator['category']", comparisons)
 
-        challenge = next(n for n in ast.walk(TREE)
-                         if isinstance(n, ast.FunctionDef) and n.name == "challenge_profile")
-        validator = next(node for node in challenge.body
-                         if isinstance(node, ast.FunctionDef) and node.name == "validator_fn")
-        comparisons = {ast.unparse(node) for node in ast.walk(validator)
-                       if isinstance(node, ast.Compare)}
-        self.assertIn("leader['action'] == validator['action']", comparisons)
-        self.assertIn("leader['category'] == validator['category']", comparisons)
-        self.assertIn("leader['confidence_bps'] == validator['confidence_bps']", comparisons)
-        self.assertIn("gl.nondet.web.get(source_url)", ast.unparse(challenge))
+        for method_name in ("challenge_profile", "reinstate_profile"):
+            method = next(n for n in ast.walk(TREE)
+                          if isinstance(n, ast.FunctionDef) and n.name == method_name)
+            validator = next(node for node in method.body
+                             if isinstance(node, ast.FunctionDef) and node.name == "validator_fn")
+            comparisons = {ast.unparse(node) for node in ast.walk(validator)
+                           if isinstance(node, ast.Compare)}
+            self.assertIn("leader['action'] == validator['action']", comparisons)
+            self.assertIn("leader['category'] == validator['category']", comparisons)
+            self.assertIn("leader['confidence_bps'] == validator['confidence_bps']", comparisons)
+            self.assertIn("gl.nondet.web.get(source_url)", ast.unparse(method))
 
     def test_storage_follows_nondeterminism_and_strict_validation(self):
         for method_name, validator_name in (
             ("register", "validate_moderation_result"),
             ("update_profile", "validate_moderation_result"),
+            ("reinstate_profile", "validate_challenge_result"),
             ("challenge_profile", "validate_challenge_result"),
         ):
             method = next(n for n in ast.walk(TREE)
@@ -220,6 +228,9 @@ class StructureTests(unittest.TestCase):
              ("bio", "str"), ("twitter", "str"), ("github", "str"),
              ("website", "str")], "None"),
             ("write", "update_profile", [("name", "str"), ("avatar", "str"),
+             ("bio", "str"), ("twitter", "str"), ("github", "str"),
+             ("website", "str")], "None"),
+            ("write", "reinstate_profile", [("name", "str"), ("avatar", "str"),
              ("bio", "str"), ("twitter", "str"), ("github", "str"),
              ("website", "str")], "None"),
             ("write", "set_address", [("name", "str"), ("new_address", "str")], "None"),

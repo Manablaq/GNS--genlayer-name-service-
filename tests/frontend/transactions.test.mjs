@@ -295,12 +295,39 @@ test("lifecycle confirmation checks require the matching post-write state", asyn
       values: { source_url: "https://evidence.example/proof", claim: "Specific impersonation evidence." },
     },
   };
+  const reinstatement = {
+    ...renewal,
+    hash: `0x${"9".repeat(64)}`,
+    action: "reinstate_profile",
+    expected: {
+      action: "reinstate_profile",
+      name: "alice",
+      values: {
+        avatar: "",
+        bio: "Remediated profile",
+        twitter: "",
+        github: "",
+        website: "",
+      },
+    },
+  };
   const reads = {
-    getRecord: async () => ({ found: true, owner: wallet, expires_at: "101" }),
+    getRecord: async () => ({
+      found: true,
+      owner: wallet,
+      expires_at: "101",
+      status: "active",
+      avatar: "",
+      bio: "Remediated profile",
+      twitter: "",
+      github: "",
+      website: "",
+    }),
     getChallenge: async () => ({
       found: true,
       source_url: "https://evidence.example/proof",
       claim: "Specific impersonation evidence.",
+      action: "keep",
     }),
     reverseResolve: async () => ({ found: false }),
     checkAvailability: async () => true,
@@ -308,4 +335,12 @@ test("lifecycle confirmation checks require the matching post-write state", asyn
   assert.equal(await expectedStateMatches(renewal, reads), true);
   assert.equal(await expectedStateMatches(released, reads), false);
   assert.equal(await expectedStateMatches(challenge, reads), true);
+  assert.equal(await expectedStateMatches(reinstatement, reads), true);
+  assert.equal(
+    await expectedStateMatches(reinstatement, {
+      ...reads,
+      getChallenge: async () => ({ found: true, action: "suspend" }),
+    }),
+    false,
+  );
 });

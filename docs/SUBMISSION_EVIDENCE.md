@@ -1,22 +1,45 @@
 # GNS V3 Bradbury evidence
 
-This is the canonical evidence map for the V3 remediation release. It separates
-the verified V3 contract from the historical V2 deployment and does not claim
-that the existing Vercel site has switched until the V3-configured branch is
-merged and deployed.
+This is the canonical evidence map for the V3 remediation release and the
+August 15 source-backed reinstatement correction. Deployment/source identity is
+verified below. The suspension/reinstatement behavior receipts remain an
+explicit release gate and must be added before resubmission.
 
-## Verified V3 contract
+## Corrected V3 contract
 
 | Item | Public evidence |
 | --- | --- |
-| Contract | <https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f> |
-| Deployment | <https://explorer-bradbury.genlayer.com/tx/0x6c8e7476432b0245039a5661022b17710f15abb63290fde569ec6908ebe0d382> |
-| Source identity | V3 deployment source SHA-256: `a1b65bbbec45e5bbebbba2354e73e66d3185f64060e511982cb80a853d289f4e`; exact match with commit `9e50e96` / `contracts/gns.py`. |
-| Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-/tree/review-v3-remediation> |
+| Contract | <https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a> |
+| Deployment | <https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e> |
+| Source identity | Deployment calldata contains `contracts/gns.py` byte-for-byte; SHA-256 `f23a89ff1c9146ceab5b55c46d8fd61de70a8494445a182b35a906072dd49b13`. |
+| Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
 
-The deployment receipt is `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`.
+The deployment receipt is `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN`. Initial
+moderation was also verified on the corrected deployment: transaction
+[`0xd9a0...a8c2`](https://explorer-bradbury.genlayer.com/tx/0xd9a032a4b4d19b4cab27c85bd152cbb9452faa598a191d38716a1de0c78da8c2)
+registered `gns-remediation-2026.gen` as an active record after a `safe` result.
 
-## On-chain V3 smoke evidence
+## Corrected reinstatement regression
+
+Status: **pending**. The public evidence fixture is
+[`docs/test-evidence/gns-remediation-2026.txt`](test-evidence/gns-remediation-2026.txt).
+Do not present the two failed placeholder-URL calls as contract defects or as
+completed challenge evidence; they failed input validation before a source
+could be fetched. The final evidence set must include:
+
+1. a source-backed suspension using the public raw fixture URL;
+2. a blocked generic or unchanged profile update;
+3. a successful changed-profile reinstatement with consistent `get_record` and
+   `get_challenge` reads; and
+4. a failed reinstatement that leaves both states suspended.
+
+## Historical V3 smoke evidence
+
+The following receipts belong to the prior V3 deployment
+[`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f).
+They remain valid evidence for lifecycle, recovery, update moderation, and the
+original source-backed challenge, but not for the corrected reinstatement
+invariant.
 
 | Scenario | Evidence | Result |
 | --- | --- | --- |
@@ -38,7 +61,8 @@ must not be used to support the V3 remediation claims.
 
 ## Frontend release status
 
-The checked-in frontend configuration targets V3. The public application remains
-<https://dotgenapp.vercel.app> until this branch is merged and Vercel completes
-its production build. After that deployment, verify the live application against
-the V3 contract address before resubmitting the project.
+The checked-in frontend configuration targets the corrected V3 contract. The
+public application remains <https://dotgenapp.vercel.app> until this branch is
+committed, pushed, and Vercel completes its production build. Verify the live
+application reports `0x337105406bca6EcAf55bd90F6e65A9e041256A8a`
+before resubmitting the project.

@@ -156,6 +156,10 @@ def test_expiry_blocks_resolution_then_renewal_or_expired_release(direct_vm, dir
     assert json.loads(contract.resolve("renewable"))["found"] is False
     with direct_vm.expect_revert("name is not active: expired"):
         contract.set_primary("renewable")
+    with direct_vm.expect_revert("name is not active: expired"):
+        contract.update_profile(
+            "renewable", "", "Cannot edit before renewal", "", "", ""
+        )
     contract.renew("renewable")
     assert record(contract, "renewable")["status"] == "active"
     contract.release_expired("releasable")
@@ -230,3 +234,102 @@ def test_source_backed_challenge_validator_rejects_conflicting_outcome(
     direct_vm.mock_web(r".*evidence\.example.*", {"status": 200, "body": "Independent source documents the impersonation."})
     direct_vm.mock_llm(r".*", CHALLENGE_KEEP)
     assert direct_vm.run_validator() is False
+
+
+def test_suspension_cannot_be_bypassed_with_generic_or_unchanged_profile_update(
+    direct_vm, direct_deploy
+):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("profile-name", "", "Impersonating profile", "", "", "")
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source documents the impersonation."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    contract.challenge_profile(
+        "profile-name", EVIDENCE_URL, "The profile impersonates this source."
+    )
+    assert direct_vm.run_validator() is True
+
+    direct_vm.clear_mocks()
+    direct_vm.mock_llm(r".*", SAFE)
+    with direct_vm.expect_revert("suspended profile requires source-backed reinstatement"):
+        contract.update_profile(
+            "profile-name", "", "Impersonating profile", "", "", ""
+        )
+    with direct_vm.expect_revert("reinstatement requires changed profile data"):
+        contract.reinstate_profile(
+            "profile-name", "", "Impersonating profile", "", "", ""
+        )
+
+    assert record(contract, "profile-name")["status"] == "suspended"
+    assert json.loads(contract.get_challenge("profile-name"))["action"] == "suspend"
+
+
+def test_changed_profile_reinstatement_rechecks_stored_source_and_updates_state_atomically(
+    direct_vm, direct_deploy
+):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("profile-name", "", "Impersonating profile", "", "", "")
+    claim = "The profile impersonates this source."
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source documents the impersonation."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    contract.challenge_profile("profile-name", EVIDENCE_URL, claim)
+    assert direct_vm.run_validator() is True
+
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source documents the old profile."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_KEEP)
+    contract.reinstate_profile(
+        "profile-name", "", "Independent software builder", "", "", ""
+    )
+    assert direct_vm.run_validator() is True
+
+    reinstated = record(contract, "profile-name")
+    challenge = json.loads(contract.get_challenge("profile-name"))
+    assert reinstated["status"] == "active"
+    assert reinstated["bio"] == "Independent software builder"
+    assert challenge["action"] == "keep"
+    assert challenge["category"] == "insufficient_evidence"
+    assert challenge["source_url"] == EVIDENCE_URL
+    assert challenge["claim"] == claim
+    assert json.loads(contract.resolve("profile-name"))["found"] is True
+
+
+def test_reinstatement_that_does_not_rebut_source_preserves_suspension(
+    direct_vm, direct_deploy
+):
+    contract = deploy_with_safe_llm(direct_vm, direct_deploy)
+    contract.register("profile-name", "", "Impersonating profile", "", "", "")
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source documents the impersonation."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    contract.challenge_profile(
+        "profile-name", EVIDENCE_URL, "The profile impersonates this source."
+    )
+    assert direct_vm.run_validator() is True
+
+    direct_vm.clear_mocks()
+    direct_vm.mock_web(
+        r".*evidence\.example.*",
+        {"status": 200, "body": "Independent source still documents the violation."},
+    )
+    direct_vm.mock_llm(r".*", CHALLENGE_SUSPEND)
+    with direct_vm.expect_revert("profile remains suspended: impersonation"):
+        contract.reinstate_profile(
+            "profile-name", "", "Slightly changed impersonating profile", "", "", ""
+        )
+
+    assert record(contract, "profile-name")["status"] == "suspended"
+    assert json.loads(contract.get_challenge("profile-name"))["action"] == "suspend"

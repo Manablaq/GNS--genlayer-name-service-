@@ -44,7 +44,13 @@ export function safeExternalUrl(value: string): string | null {
   } catch { return null }
 }
 
-export function normalizeProfile(profile: Record<string, string>) {
+export function normalizeProfile(profile: {
+  avatar: string
+  bio: string
+  twitter: string
+  github: string
+  website: string
+}) {
   return {
     avatar: profile.avatar.trim(), bio: profile.bio.trim(),
     twitter: profile.twitter.trim().replace(/^@/, ''), github: profile.github.trim().replace(/^@/, ''),

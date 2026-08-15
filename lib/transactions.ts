@@ -25,6 +25,7 @@ export type TxState =
 export type TxAction =
   | "register"
   | "update_profile"
+  | "reinstate_profile"
   | "set_address"
   | "set_primary"
   | "transfer"
@@ -81,6 +82,7 @@ const states = new Set<TxState>([
 const actions = new Set<TxAction>([
   "register",
   "update_profile",
+  "reinstate_profile",
   "set_address",
   "set_primary",
   "transfer",
@@ -396,6 +398,21 @@ export async function expectedStateMatches(
       challenge?.found === true &&
       challenge.source_url === values.source_url &&
       challenge.claim === values.claim
+    );
+  }
+  if (action === "reinstate_profile") {
+    const [record, challenge] = await Promise.all([
+      reads.getRecord(name),
+      reads.getChallenge(name),
+    ]);
+    return (
+      record?.found === true &&
+      record.status === "active" &&
+      challenge?.found === true &&
+      challenge.action === "keep" &&
+      profileFields.every(
+        (field) => (record[field] || "") === (values[field] || ""),
+      )
     );
   }
   const record = await reads.getRecord(name);

@@ -2,6 +2,7 @@ import { CONTRACT_ADDRESS } from './config'
 export type GnsWriteMethod =
   | 'register'
   | 'update_profile'
+  | 'reinstate_profile'
   | 'set_address'
   | 'set_primary'
   | 'transfer'
