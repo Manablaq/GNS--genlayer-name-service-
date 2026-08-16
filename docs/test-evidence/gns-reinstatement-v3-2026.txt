@@ -1,0 +1,51 @@
+GNS source-backed reinstatement regression fixture v3
+
+This is a synthetic fixture for testing gns-remediation-v3-2026.gen. It does
+not describe a real person, organization, brand, or identity and must not be
+used to moderate any other name.
+
+Registered challenge policy
+
+For this controlled regression only, suspend the target name when its stored
+profile exactly matches either test profile A or test profile B below. Keep
+the target suspended when a proposed replacement exactly matches either test
+profile. The source does not support suspension when the proposed replacement
+exactly matches remediated profile C.
+
+Test profile A (initial challenged profile)
+- avatar: empty
+- bio: Controlled source-backed moderation regression profile A
+- twitter: empty
+- github: empty
+- website: empty
+
+Test profile B (changed but still subject to suspension)
+- avatar: empty
+- bio: Controlled source-backed moderation regression profile B
+- twitter: empty
+- github: empty
+- website: empty
+
+Remediated profile C (does not support suspension)
+- avatar: empty
+- bio: Independent remediated regression profile C
+- twitter: empty
+- github: empty
+- website: empty
+
+Expected controlled outcomes
+
+1. Registration of profile A should pass ordinary profile moderation because
+   its stored fields make no real-world identity, affiliation, or abuse claim.
+2. A challenge that cites this source against profile A should return suspend.
+3. Reinstatement from profile A to unchanged profile A must be rejected before
+   source review.
+4. Reinstatement from profile A to changed profile B should still return
+   suspend and must not change either stored record or challenge state.
+5. Reinstatement from profile A to remediated profile C should return keep and
+   may reactivate the record while replacing the challenge with a consistent
+   keep decision bound to profile C.
+
+This fixture intentionally separates neutral on-chain profile text from the
+source-backed policy consequence. It exists only to exercise the suspension,
+failed-remediation, and successful-remediation state transitions.
