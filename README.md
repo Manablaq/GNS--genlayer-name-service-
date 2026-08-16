@@ -10,9 +10,10 @@ review. The release closes both the reported no-op profile-update bypass and
 the related release/re-registration bypass. It has passed the local contract,
 Direct Mode, frontend, build, and GenVM verification gates documented below.
 Its byte-identical source is deployed on Bradbury. The reviewer-requested
-on-chain suspension and reinstatement regression has reached accepted
-consensus; receipts still need their finalization windows to complete before
-they are used in a resubmission.
+on-chain suspension and successful source-backed reinstatement regression is
+finalized on Bradbury. The evidence ledger distinguishes those finalized
+receipts from execution-error regression checks supported by their post-state
+reads.
 
 ## Release status
 
@@ -24,15 +25,15 @@ they are used in a resubmission.
 | Release source SHA-256 | `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2` |
 | Matching Bradbury contract | [`0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`](https://explorer-bradbury.genlayer.com/address/0x676561784d0864EaFF87F281bA1Af9E2c2e9F090) |
 | Matching deployment | [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67), `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN` |
-| Reviewer-requested on-chain regression | **Accepted receipts recorded; await finalization** |
-| Production frontend binding | **Pending redeployment** |
+| Reviewer-requested on-chain regression | **Finalized suspension and successful changed-profile reinstatement; error-path post-state checks recorded** |
+| Production frontend binding | **Verified: public app displays `0x6765...F090`** |
 | Prior follow-up contract | [`0x337105406bca6EcAf55bd90F6e65A9e041256A8a`](https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a), historical only |
 | Prior follow-up deployment | [`0x79db...a28e`](https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e), historical only |
 | Original V3 contract | [`0xD7Dfa67bF29D020551f2380d68043e6701b49D3f`](https://explorer-bradbury.genlayer.com/address/0xD7Dfa67bF29D020551f2380d68043e6701b49D3f), historical only |
 
 The checked-in frontend targets the matching `0x6765...F090` deployment. The
-public application must be redeployed and verified before it is cited as
-matching evidence.
+public application at <https://dotgenapp.vercel.app> displays the same
+`0x6765...F090` contract identifier.
 
 ## What the review changed
 

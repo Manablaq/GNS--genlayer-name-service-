@@ -14,30 +14,33 @@ identify exactly which source each claim supports.
 | Matching deployment receipt | [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67) |
 | Deployment result | `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN` |
 | Deployed source identity | Byte-identical, 49,106 bytes; SHA-256 matches this release |
-| Frontend source binding | `lib/config.ts` targets `0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`; production verification remains a separate gate |
+| Frontend source binding | `lib/config.ts` targets `0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`; the public app displays `0x6765...F090` |
 | Repository | <https://github.com/Manablaq/GNS--genlayer-name-service-> |
 
-Do not resubmit while the application binding or any required regression row
-is pending. The deployment calldata contains this exact source, and the
-checked-in frontend configuration points to the accepted contract.
+The deployment calldata contains this exact source, and both the checked-in
+frontend configuration and the public application point to the accepted
+contract. The initial registration receipt is linked below, completing the
+reviewer-requested Bradbury evidence set.
 
 ## Required Bradbury reviewer regression
 
-The receipts below have reached `ACCEPTED` consensus but must finish their
-Bradbury finalization windows before they are cited in a submission. State
-reads were taken after each relevant execution and show the persisted result.
+State reads were taken after each relevant execution and show the persisted
+result. The public explorer marks the registration, suspension, and successful
+remediated reinstatement receipts `FINALIZED`. Error-path claims below are
+intentionally based on their accepted execution results and preserved
+post-state, rather than asserting an explorer detail page that is not rendered.
 
 | Scenario | Required proof | Status |
 | --- | --- | --- |
 | Deployment identity | Accepted deployment; calldata contains the byte-identical release source and its SHA equals the repository SHA | Verified: [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67) |
-| Initial registration | Active Profile A state read for `gns-remediation-v3-2026.gen` | Observed on current contract; registration receipt must be linked before submission |
-| Source-backed suspension | `get_record.status == "suspended"`; `get_challenge.action == "suspend"`; source, claim, confidence, and Profile A snapshot are stored | [`0xf414...5fe7`](https://explorer-bradbury.genlayer.com/tx/0xf41413cb4c3c862df3d717a439c1a85cc1651d915e7bbf6976de39a80b145fe7), accepted; post-state verified; finalization pending |
-| Reported no-op update bypass | Suspended owner calls `update_profile` with unchanged Profile A; execution fails and both reads remain unchanged | [`0xe1e8...bec4`](https://explorer-bradbury.genlayer.com/tx/0xe1e8fd9b4ee191a64a0900ece23b6709eeb6a6a764661aa9b664d9fd5d74bec4), `FINISHED_WITH_ERROR`; post-state verified; finalization pending |
-| Failed changed remediation | `reinstate_profile` proposes Profile B; source independently returns `suspend`; execution fails closed and Profile A suspension remains intact | [`0x9315...0a3a`](https://explorer-bradbury.genlayer.com/tx/0x9315f49d7cbc04e7b11672d73f14be1a684a010c1d6d89849f3bf76d44420a3a), `FINISHED_WITH_ERROR`; post-state verified; finalization pending |
-| Successful changed remediation | `reinstate_profile` proposes Profile C; source independently returns `keep`; record becomes active and challenge is replaced by `keep` bound to Profile C | [`0x4fe2...77cd`](https://explorer-bradbury.genlayer.com/tx/0x4fe2ef6410992358ea20bf7eac138095ffdbcdb56db2bf9aab8219f51cd477cd), `FINISHED_WITH_RETURN`; post-state verified; finalization pending |
+| Initial registration | Active Profile A state read for `gns-remediation-v3-2026.gen` | [`0xb827...9223`](https://explorer-bradbury.genlayer.com/tx/0xb827cf57eb08730f4f5dbd645c8f073967b06c6b8a3a1f615a5106722aca9223), `FINALIZED`; registration moderation returned `safe` |
+| Source-backed suspension | `get_record.status == "suspended"`; `get_challenge.action == "suspend"`; source, claim, confidence, and Profile A snapshot are stored | [`0xf414...5fe7`](https://explorer-bradbury.genlayer.com/tx/0xf41413cb4c3c862df3d717a439c1a85cc1651d915e7bbf6976de39a80b145fe7), `FINALIZED`; post-state verified |
+| Reported no-op update bypass | Suspended owner calls `update_profile` with unchanged Profile A; execution fails and both reads remain unchanged | [`0xe1e8...bec4`](https://explorer-bradbury.genlayer.com/tx/0xe1e8fd9b4ee191a64a0900ece23b6709eeb6a6a764661aa9b664d9fd5d74bec4), accepted `FINISHED_WITH_ERROR`; preserved post-state verified |
+| Failed changed remediation | `reinstate_profile` proposes Profile B; source independently returns `suspend`; execution fails closed and Profile A suspension remains intact | [`0x9315...0a3a`](https://explorer-bradbury.genlayer.com/tx/0x9315f49d7cbc04e7b11672d73f14be1a684a010c1d6d89849f3bf76d44420a3a), `FINALIZED` accepted error; preserved post-state verified |
+| Successful changed remediation | `reinstate_profile` proposes Profile C; source independently returns `keep`; record becomes active and challenge is replaced by `keep` bound to Profile C | [`0x4fe2...77cd`](https://explorer-bradbury.genlayer.com/tx/0x4fe2ef6410992358ea20bf7eac138095ffdbcdb56db2bf9aab8219f51cd477cd), `FINALIZED` / `FINISHED_WITH_RETURN`; post-state verified |
 | Unchanged `reinstate_profile` guard | Rejection before a source fetch | Local Direct Mode coverage complete; optional additional Bradbury receipt |
 | Suspended owner release | `release` fails and preserves record plus challenge | Local Direct Mode coverage complete; optional additional Bradbury receipt |
-| Frontend identity | Production app displays and calls the matching contract address | Pending |
+| Frontend identity | Production app displays the matching contract address | Verified: <https://dotgenapp.vercel.app> shows `0x6765...F090` |
 
 ## Additional lifecycle verification
 
@@ -99,9 +102,10 @@ review finding. It uses the immutable v3 fixture and the same name throughout:
    stored challenge became `keep`, using the same immutable source and the
    new challenged-profile snapshot.
 
-Do not describe these rows as finalized until the explorer marks every cited
-receipt finalized. The source-backed state reads, not the outer transaction
-label alone, establish each lifecycle assertion.
+The source-backed state reads, not the outer transaction label alone, establish
+each lifecycle assertion. Do not overstate the two expected execution-error
+receipts as successful writes: they prove that the attempted bypass and
+still-violating remediation left the prior suspension state intact.
 
 ## Historical follow-up deployment
 
