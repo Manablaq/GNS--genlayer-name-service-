@@ -48,7 +48,11 @@ Do not upgrade or reuse `0x337...`; it predates this release candidate.
 
 ## 3. Run the on-chain regression
 
-Use a fresh name and a stable public HTTPS evidence fixture.
+Use the fresh name `gns-remediation-v2-2026` and this immutable public HTTPS
+fixture:
+<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/6285459b18803aea4a1896752e2cac2ecff24ed8/docs/test-evidence/gns-reinstatement-v2-2026.txt>.
+Use the exact synthetic profiles defined in that fixture so the expected
+`suspend`, failed-remediation, and `keep` outcomes are independently auditable.
 
 1. Register a profile and verify `active`.
 2. Challenge it with source material that supports suspension.

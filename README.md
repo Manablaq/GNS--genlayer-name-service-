@@ -143,6 +143,11 @@ rejection, changed-profile reinstatement, failed remediation with atomic state
 preservation, blocked owner release, expiry cleanup with a preserved tombstone,
 and both rejected and accepted source-backed re-registration.
 
+The Bradbury regression uses a commit-pinned synthetic evidence fixture with
+explicit violating and remediated profiles. It does not make a real-world
+identity allegation, and its content cannot drift when the repository branch
+changes.
+
 ## Deployment and evidence
 
 Follow [`docs/DEPLOYMENT_CHECKLIST.md`](docs/DEPLOYMENT_CHECKLIST.md) exactly.

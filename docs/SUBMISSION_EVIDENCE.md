@@ -40,9 +40,13 @@ Record finalized explorer links and post-state reads for every row:
 
 Use a real, stable, public HTTPS fixture with a DNS hostname. Placeholder text,
 HTTP URLs, local addresses, IP literals, and unverifiable claims are invalid
-evidence. The repository fixture is
-[`test-evidence/gns-remediation-2026.txt`](test-evidence/gns-remediation-2026.txt);
-publish and verify its raw GitHub URL before testing.
+evidence. Use the versioned synthetic fixture
+[`test-evidence/gns-reinstatement-v2-2026.txt`](test-evidence/gns-reinstatement-v2-2026.txt)
+through its immutable commit URL:
+<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/6285459b18803aea4a1896752e2cac2ecff24ed8/docs/test-evidence/gns-reinstatement-v2-2026.txt>.
+It explicitly defines the initial violating profile, a changed but still
+violating profile, and a remediated profile so all three outcomes are
+source-backed without making a real-world identity allegation.
 
 ## Historical follow-up deployment
 
