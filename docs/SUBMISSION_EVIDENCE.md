@@ -52,12 +52,24 @@ contract tests, not as Bradbury receipts.
 Use a real, stable, public HTTPS fixture with a DNS hostname. Placeholder text,
 HTTP URLs, local addresses, IP literals, and unverifiable claims are invalid
 evidence. Use the versioned synthetic fixture
-[`test-evidence/gns-reinstatement-v2-2026.txt`](test-evidence/gns-reinstatement-v2-2026.txt)
+[`test-evidence/gns-reinstatement-v3-2026.txt`](test-evidence/gns-reinstatement-v3-2026.txt)
 through its immutable commit URL:
-<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/6285459b18803aea4a1896752e2cac2ecff24ed8/docs/test-evidence/gns-reinstatement-v2-2026.txt>.
-It explicitly defines the initial violating profile, a changed but still
-violating profile, and a remediated profile so all three outcomes are
-source-backed without making a real-world identity allegation.
+<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/7c1a5b1b7e17fbf475a42a2437e58e61589630f7/docs/test-evidence/gns-reinstatement-v3-2026.txt>.
+It explicitly defines a neutral initial profile, a changed profile that remains
+subject to the synthetic test policy, and a remediated profile. This separates
+ordinary registration moderation from the later source-backed lifecycle test
+without making a real-world identity allegation.
+
+## Superseded test-input attempt
+
+Transaction
+[`0x07e9...7f15`](https://explorer-bradbury.genlayer.com/tx/0x07e9ca80c973540b7bef963a00a283761ddb3abe35c98b53a1392af96b5b7f15)
+used `gns-remediation-v2-2026` with profile text that described an unauthorized
+identity claim. Registration moderation classified the profile as
+`impersonation`; the transaction ended `UNDETERMINED` / `DISAGREE` with
+`FINISHED_WITH_ERROR`. It does not establish a registered record or any part of
+the reinstatement regression and must not be submitted as successful evidence.
+The neutral, commit-pinned v3 fixture above supersedes that input design.
 
 ## Historical follow-up deployment
 

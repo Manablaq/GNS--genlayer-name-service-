@@ -144,9 +144,12 @@ preservation, blocked owner release, expiry cleanup with a preserved tombstone,
 and both rejected and accepted source-backed re-registration.
 
 The Bradbury regression uses a commit-pinned synthetic evidence fixture with
-explicit violating and remediated profiles. It does not make a real-world
-identity allegation, and its content cannot drift when the repository branch
-changes.
+neutral on-chain profile text and explicit source-defined test outcomes. It
+does not make a real-world identity allegation, its registration moderation is
+separate from the source-backed challenge, and its content cannot drift when
+the repository branch changes. The current fixture is
+[`gns-reinstatement-v3-2026.txt`](docs/test-evidence/gns-reinstatement-v3-2026.txt)
+at commit `7c1a5b1b7e17fbf475a42a2437e58e61589630f7`.
 
 ## Deployment and evidence
 

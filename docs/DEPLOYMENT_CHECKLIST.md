@@ -48,11 +48,18 @@ Do not upgrade or reuse `0x337...`; it predates this release candidate.
 
 ## 3. Run the on-chain regression
 
-Use the fresh name `gns-remediation-v2-2026` and this immutable public HTTPS
+Use the fresh name `gns-remediation-v3-2026` and this immutable public HTTPS
 fixture:
-<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/6285459b18803aea4a1896752e2cac2ecff24ed8/docs/test-evidence/gns-reinstatement-v2-2026.txt>.
+<https://raw.githubusercontent.com/Manablaq/GNS--genlayer-name-service-/7c1a5b1b7e17fbf475a42a2437e58e61589630f7/docs/test-evidence/gns-reinstatement-v3-2026.txt>.
 Use the exact synthetic profiles defined in that fixture so the expected
 `suspend`, failed-remediation, and `keep` outcomes are independently auditable.
+
+The initial registration must use neutral profile A exactly as written. The
+source fixture, not the registration fields, defines the controlled policy
+consequence. Do not place words such as `unauthorized`, `impersonation`, or
+`deceptive` in the profile itself because ordinary registration moderation is
+a separate gate and may correctly reject those claims before the lifecycle
+regression begins.
 
 1. Register a profile and verify `active`.
 2. Challenge it with source material that supports suspension.
