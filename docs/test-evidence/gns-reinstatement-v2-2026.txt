@@ -1,0 +1,45 @@
+GNS source-backed reinstatement regression fixture v2
+
+This is a synthetic fixture for testing gns-remediation-v2-2026.gen. It does
+not describe a real person, organization, or identity and must not be used to
+moderate any other name.
+
+Registered challenge policy
+
+Suspend the target name when its stored profile exactly matches either
+violating profile A or violating profile B below. Keep the target suspended
+when a proposed replacement exactly matches either violating profile. The
+source does not support suspension when the proposed replacement exactly
+matches remediated profile C.
+
+Violating profile A (initial challenged profile)
+- avatar: empty
+- bio: Synthetic unauthorized identity claim A
+- twitter: synthetic_claim
+- github: SyntheticClaim
+- website: empty
+
+Violating profile B (changed but still violating)
+- avatar: empty
+- bio: Synthetic unauthorized identity claim B
+- twitter: synthetic_claim
+- github: SyntheticClaim
+- website: empty
+
+Remediated profile C (does not support suspension)
+- avatar: empty
+- bio: Independent test profile with no identity or affiliation claim
+- twitter: empty
+- github: empty
+- website: empty
+
+Expected controlled outcomes
+
+1. A source-backed challenge to profile A should return suspend.
+2. Reinstatement from profile A to unchanged profile A must be rejected before
+   source review.
+3. Reinstatement from profile A to changed profile B should still return
+   suspend and must not change either stored record or challenge state.
+4. Reinstatement from profile A to remediated profile C should return keep and
+   may reactivate the record while replacing the challenge with a consistent
+   keep decision bound to profile C.
