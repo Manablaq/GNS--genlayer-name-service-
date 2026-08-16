@@ -21,7 +21,7 @@ Do not resubmit while the application binding or any required regression row
 is pending. The deployment calldata contains this exact source, and the
 checked-in frontend configuration points to the accepted contract.
 
-## Required Bradbury regression matrix
+## Required Bradbury reviewer regression
 
 Record finalized explorer links and post-state reads for every row:
 
@@ -34,9 +34,20 @@ Record finalized explorer links and post-state reads for every row:
 | Failed changed remediation | Source still supports suspension; transaction fails closed and both reads remain suspended | Pending |
 | Successful changed remediation | Exact `keep` consensus; record becomes active and challenge becomes `keep` for the accepted snapshot | Pending |
 | Suspended owner release | `release` fails and preserves record plus challenge | Pending |
-| Expired suspension cleanup | `release_expired` removes the record but preserves the `suspend` tombstone | Pending |
-| Re-registration guard | Unchanged and still-violating registrations fail; changed rebuttal succeeds only after source-backed exact `keep` consensus | Pending |
 | Frontend identity | Production app displays and calls the matching contract address | Pending |
+
+## Additional lifecycle verification
+
+The one-year lease prevents practical expiry testing on a newly deployed
+Bradbury instance. Expiry cleanup and guarded re-registration are therefore
+verified in the 18-test Direct Mode suite, where time can be controlled without
+changing production constants. They must be described as local deterministic
+contract tests, not as Bradbury receipts.
+
+| Scenario | Verified behavior | Evidence |
+| --- | --- | --- |
+| Expired suspension cleanup | `release_expired` removes the record but preserves the `suspend` tombstone | `tests/test_gns_v2_direct.py` passed |
+| Re-registration guard | Unchanged and still-violating registrations fail; changed rebuttal succeeds only after source-backed exact `keep` consensus | `tests/test_gns_v2_direct.py` passed |
 
 Use a real, stable, public HTTPS fixture with a DNS hostname. Placeholder text,
 HTTP URLs, local addresses, IP literals, and unverifiable claims are invalid

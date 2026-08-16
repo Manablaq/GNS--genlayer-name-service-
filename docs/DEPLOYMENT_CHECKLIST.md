@@ -64,13 +64,15 @@ Use the exact synthetic profiles defined in that fixture so the expected
    remains suspended with no partial write.
 7. Submit a changed profile that rebuts the finding; verify exact `keep`
    consensus and consistent active record/challenge reads.
-8. On a second suspended name, verify owner `release` fails.
-9. After expiry, call `release_expired`; verify the record is gone but the
-   `suspend` challenge remains.
-10. Verify unchanged and still-violating re-registration fail, then verify a
-    changed rebuttal succeeds only after independent source-backed review.
+8. Before successful reinstatement, verify owner `release` fails and preserves
+   both the suspended record and challenge.
 
 Wait for finalization before using any receipt in a submission.
+
+The one-year production lease makes expiry impractical to exercise on a fresh
+Bradbury deployment. Verify expiry cleanup, preserved tombstones, and guarded
+re-registration in Direct Mode with controlled time. Report those results as
+local contract tests, never as on-chain receipts.
 
 ## 4. Bind the frontend
 

@@ -9,8 +9,8 @@ This repository contains the V3 remediation release for the August 15, 2026
 review. The release closes both the reported no-op profile-update bypass and
 the related release/re-registration bypass. It has passed the local contract,
 Direct Mode, frontend, build, and GenVM verification gates documented below.
-Its byte-identical source is deployed on Bradbury; the full on-chain lifecycle
-regression remains required before resubmission.
+Its byte-identical source is deployed on Bradbury; the reviewer-requested
+on-chain suspension and reinstatement regression remains before resubmission.
 
 ## Release status
 
@@ -22,7 +22,7 @@ regression remains required before resubmission.
 | Release source SHA-256 | `fcd91e87b8bd9e6408a31539f72e5cb689444e3f32da29e27fd0ca0beafb6ed2` |
 | Matching Bradbury contract | [`0x676561784d0864EaFF87F281bA1Af9E2c2e9F090`](https://explorer-bradbury.genlayer.com/address/0x676561784d0864EaFF87F281bA1Af9E2c2e9F090) |
 | Matching deployment | [`0x4f85...fec67`](https://explorer-bradbury.genlayer.com/tx/0x4f85b4464ee957244d8066d1748176f27a49ea7a8f9a193936e01cf24ddfec67), `ACCEPTED` / `AGREE` / `FINISHED_WITH_RETURN` |
-| On-chain regression matrix | **Pending** |
+| Reviewer-requested on-chain regression | **Pending** |
 | Production frontend binding | **Pending redeployment** |
 | Prior follow-up contract | [`0x337105406bca6EcAf55bd90F6e65A9e041256A8a`](https://explorer-bradbury.genlayer.com/address/0x337105406bca6EcAf55bd90F6e65A9e041256A8a), historical only |
 | Prior follow-up deployment | [`0x79db...a28e`](https://explorer-bradbury.genlayer.com/tx/0x79dbac605a59c3b75faec0818ebc1c9a83f2660f3783242fc926c469c099a28e), historical only |
